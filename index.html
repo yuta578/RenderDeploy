@@ -61,8 +61,8 @@
                 </div>
 
                 <div class="topbar-actions">
-                    <!-- Dark Mode Toggle Button (Visible only according to Ticket rollout stage) -->
-                    <div id="dark-mode-toggle-container" class="toggle-container hidden">
+                    <!-- Dark Mode Toggle Button -->
+                    <div id="dark-mode-toggle-container" class="toggle-container">
                         <button id="dark-mode-toggle" class="btn-theme-toggle" aria-label="Alternar tema oscuro">
                             <span class="theme-icon light-icon">☀️</span>
                             <span class="theme-icon dark-icon">🌙</span>
@@ -182,13 +182,39 @@
 
                     <div class="card info-card">
                         <div class="card-header">
-                            <h3>Estado del Feature Flag en Runtime</h3>
+                            <div>
+                                <h3>Estado del Feature Flag (ConfigCat)</h3>
+                            </div>
+                            <span id="configcat-status-badge" class="badge">ConfigCat SDK</span>
                         </div>
                         <div class="card-body">
+                            <!-- ConfigCat Integration Panel -->
+                            <div class="configcat-panel">
+                                <label for="configcat-sdk-key" class="configcat-label">
+                                    <span>🐱</span> <strong>ConfigCat SDK Key:</strong>
+                                </label>
+                                <div class="configcat-input-group">
+                                    <input type="text" id="configcat-sdk-key" placeholder="Pega tu SDK Key de ConfigCat (opcional)..." autocomplete="off" />
+                                    <button id="btn-connect-configcat" class="btn-sm btn-primary">Conectar</button>
+                                    <button id="btn-reset-configcat" class="btn-sm btn-ghost" title="Volver a simulación local">Reset</button>
+                                </div>
+                                <div id="configcat-connection-msg" class="configcat-msg">
+                                    Modo: <strong>ConfigCat Local Overrides (Simulador de Tickets)</strong>
+                                </div>
+                            </div>
+
                             <ul class="flag-inspector-list">
                                 <li>
-                                    <span class="label">Flag Name:</span>
+                                    <span class="label">Provider:</span>
+                                    <code class="val" id="info-sdk-provider">@configcat/sdk</code>
+                                </li>
+                                <li>
+                                    <span class="label">Flag Key:</span>
                                     <code class="val">dark_mode_enabled</code>
+                                </li>
+                                <li>
+                                    <span class="label">Valor en ConfigCat:</span>
+                                    <span id="info-flag-value" class="val badge">false</span>
                                 </li>
                                 <li>
                                     <span class="label">Fase Activa:</span>
@@ -197,6 +223,10 @@
                                 <li>
                                     <span class="label">Porcentaje Rollout:</span>
                                     <span id="info-rollout-pct" class="val">100%</span>
+                                </li>
+                                <li>
+                                    <span class="label">Usuario ConfigCat:</span>
+                                    <code class="val" id="info-user-identifier">admin_5</code>
                                 </li>
                                 <li>
                                     <span class="label">User Cohort Bucket:</span>
@@ -218,6 +248,7 @@
         </main>
     </div>
 
+    <script src="configcat.js"></script>
     <script src="app.js"></script>
 </body>
 

@@ -2,20 +2,48 @@
  * ============================================================================
  * NexusDash - Analytics Dashboard: Feature Flag & Dark Mode Rollout Engine
  * ============================================================================
- * Este archivo está diseñado de forma universal (híbrida):
- * 1. En Node.js (Terminal / Render): Actúa como servidor web HTTP para servir index.html, styles.css, etc.
- * 2. En el Navegador (Browser DOM): Ejecuta la lógica interactiva de Feature Flags y Modo Oscuro.
+ * Arquitectura:
+ * 1. Node.js (Servidor / Render):
+ *    - Lee automáticamente las variables de entorno desde el archivo .env.
+ *    - Sirve index.html, styles.css, configcat.js, app.js.
+ *    - Expone el endpoint /api/config para entregar la clave de ConfigCat al frontend.
+ * 2. Navegador (DOM):
+ *    - Botón de Modo Oscuro siempre visible y funcional.
+ *    - Sincronización en vivo con ConfigCat SDK (configcat.js) y simulador de tickets.
  */
 
 if (typeof window === 'undefined') {
     // =========================================================================
-    // ENTORNO NODE.JS (Servidor HTTP para Despliegue en Render y Desarrollo Local)
+    // ENTORNO NODE.JS (Servidor HTTP con carga de .env)
     // =========================================================================
     const http = require('http');
     const fs = require('fs');
     const path = require('path');
 
+    function loadEnvFile() {
+        const envPath = path.join(__dirname, '.env');
+        if (fs.existsSync(envPath)) {
+            const lines = fs.readFileSync(envPath, 'utf8').split(/\r?\n/);
+            lines.forEach((line) => {
+                const trimmed = line.trim();
+                if (trimmed && !trimmed.startsWith('#')) {
+                    const eqIdx = trimmed.indexOf('=');
+                    if (eqIdx !== -1) {
+                        const key = trimmed.slice(0, eqIdx).trim();
+                        const val = trimmed.slice(eqIdx + 1).trim().replace(/^["']|["']$/g, '');
+                        if (!process.env[key]) {
+                            process.env[key] = val;
+                        }
+                    }
+                }
+            });
+        }
+    }
+
+    loadEnvFile();
+
     const PORT = process.env.PORT || 3000;
+    const CONFIGCAT_ENV_KEY = process.env.CONFIGCAT_SDK_KEY || '';
 
     const MIME_TYPES = {
         '.html': 'text/html; charset=utf-8',
@@ -31,11 +59,19 @@ if (typeof window === 'undefined') {
 
     const server = http.createServer((req, res) => {
         let reqPath = req.url.split('?')[0];
+
+        if (reqPath === '/api/config') {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({
+                configCatSdkKey: CONFIGCAT_ENV_KEY !== 'TU_CONFIGCAT_SDK_KEY_AQUI' ? CONFIGCAT_ENV_KEY : ''
+            }));
+            return;
+        }
+
         if (reqPath === '/' || reqPath === '') {
             reqPath = '/index.html';
         }
 
-        // Sanitizar ruta para prevenir Directory Traversal
         const safePath = path.normalize(reqPath).replace(/^(\.\.[\/\\])+/, '');
         const filePath = path.join(__dirname, safePath);
 
@@ -57,38 +93,36 @@ if (typeof window === 'undefined') {
     server.listen(PORT, () => {
         console.log(`\n======================================================`);
         console.log(`🚀 Servidor NexusDash activo en: http://localhost:${PORT}`);
+        console.log(`📄 Archivo .env cargado correctamente`);
+        if (CONFIGCAT_ENV_KEY && CONFIGCAT_ENV_KEY !== 'TU_CONFIGCAT_SDK_KEY_AQUI') {
+            console.log(`🐱 ConfigCat SDK Key conectada: ${CONFIGCAT_ENV_KEY.slice(0, 16)}...`);
+        }
         console.log(`📦 Puerto configurado para Render / Local: ${PORT}`);
         console.log(`======================================================\n`);
     });
 
 } else {
     // =========================================================================
-    // ENTORNO NAVEGADOR (Lógica de Interfaz, Feature Flags y Modo Oscuro)
+    // ENTORNO NAVEGADOR (Lógica de Interfaz y Modo Oscuro)
     // =========================================================================
-    document.addEventListener('DOMContentLoaded', () => {
-        // ---------------------------------------------------------------------
-        // 1. Constantes y Configuración
-        // ---------------------------------------------------------------------
+    document.addEventListener('DOMContentLoaded', async () => {
         const STORAGE_THEME_KEY = 'nexusdash_theme';
         const STORAGE_TICKET_KEY = 'nexusdash_active_ticket';
 
-        // Lista de usuarios muestra para simular cohortes (Bucket < 10% y Bucket >= 10%)
         const USERS = [
-            { id: 'admin_5', name: 'Admin Dev', initials: 'AD', role: 'Staff Engineer' },      // Hash: 7% -> Califica
-            { id: 'user_qa_88', name: 'QA Tester', initials: 'QA', role: 'Quality Assurance' } // Hash: 77% -> Fuera del 10%
+            { id: 'admin_5', name: 'Admin Dev', initials: 'AD', role: 'Staff Engineer', email: 'admin@nexusdash.dev' },
+            { id: 'user_qa_88', name: 'QA Tester', initials: 'QA', role: 'Quality Assurance', email: 'qa@nexusdash.dev' }
         ];
         let currentUserIndex = 0;
 
-        // Estado en memoria
         let state = {
-            activeTicket: 'ticket-3', // Valor inicial sincronizado con HTML (ticket-3)
-            inMemoryTheme: 'light',  // Para Ticket 2 (sin persistencia)
-            currentUser: USERS[0]
+            activeTicket: 'ticket-3',
+            inMemoryTheme: 'light',
+            currentUser: USERS[0],
+            lastEvaluatedFlagValue: false
         };
 
-        // ---------------------------------------------------------------------
-        // 2. Referencias al DOM
-        // ---------------------------------------------------------------------
+        // Referencias al DOM
         const htmlRoot = document.documentElement;
         const ticketSelect = document.getElementById('ticket-select');
         const darkModeToggleContainer = document.getElementById('dark-mode-toggle-container');
@@ -99,6 +133,13 @@ if (typeof window === 'undefined') {
         const userNameEl = document.querySelector('.user-name');
         const avatarEl = document.querySelector('.avatar');
 
+        // Panel de ConfigCat
+        const ccSdkKeyInput = document.getElementById('configcat-sdk-key');
+        const ccConnectBtn = document.getElementById('btn-connect-configcat');
+        const ccResetBtn = document.getElementById('btn-reset-configcat');
+        const ccStatusBadge = document.getElementById('configcat-status-badge');
+        const ccConnectionMsg = document.getElementById('configcat-connection-msg');
+
         // Cajas de Tickets
         const ticketBoxes = {
             'ticket-1': document.getElementById('ticket-box-1'),
@@ -106,59 +147,104 @@ if (typeof window === 'undefined') {
             'ticket-3': document.getElementById('ticket-box-3')
         };
 
-        // Inspector de Estado en Runtime
+        // Inspector en Runtime
         const inspector = {
+            sdkProvider: document.getElementById('info-sdk-provider'),
+            flagKey: document.querySelector('.flag-inspector-list li:nth-child(2) .val'),
+            flagValue: document.getElementById('info-flag-value'),
             phase: document.getElementById('info-current-phase'),
             rolloutPct: document.getElementById('info-rollout-pct'),
+            userIdentifier: document.getElementById('info-user-identifier'),
             userBucket: document.getElementById('info-user-bucket'),
             persistence: document.getElementById('info-persistence-status'),
             themeApplied: document.getElementById('info-theme-applied')
         };
 
-        // ---------------------------------------------------------------------
-        // 3. Algoritmo de Hashing para Cohortes de Feature Flag
-        // ---------------------------------------------------------------------
-        /**
-         * Calcula de forma determinista un bucket numérico entre 0 y 99 a partir del ID del usuario.
-         * @param {string} userId
-         * @returns {number} 0..99
-         */
+        // Asegurar que el botón de Modo Oscuro SIEMPRE esté visible
+        if (darkModeToggleContainer) {
+            darkModeToggleContainer.classList.remove('hidden');
+        }
+
         function computeUserBucket(userId) {
             let hash = 0;
             for (let i = 0; i < userId.length; i++) {
                 hash = ((hash << 5) - hash) + userId.charCodeAt(i);
-                hash |= 0; // Conversión a entero de 32 bits
+                hash |= 0;
             }
             return Math.abs(hash) % 100;
         }
 
         // ---------------------------------------------------------------------
-        // 4. Lógica del Feature Flag por Ticket
+        // Evaluación de Feature Flag
         // ---------------------------------------------------------------------
-        function evaluateFeatureFlag() {
+        async function evaluateFeatureFlag() {
             const bucket = computeUserBucket(state.currentUser.id);
-            const ticket = state.activeTicket;
+            const userWithBucket = { ...state.currentUser, bucket };
+            const ccStatus = window.ConfigCatService ? window.ConfigCatService.getStatus() : { isCloud: false };
+            const flagKeyName = window.ConfigCatService ? window.ConfigCatService.getDetectedFlagKey() : 'dark_mode_enabled';
 
-            switch (ticket) {
+            let flagEnabled = false;
+
+            if (ccStatus.isCloud) {
+                // Modo Cloud (evaluación con el SDK contra ConfigCat)
+                flagEnabled = await window.ConfigCatService.getValueAsync(flagKeyName, false, userWithBucket);
+                state.lastEvaluatedFlagValue = flagEnabled;
+
+                // Si en ConfigCat está activo y no hay preferencia manual guardada, activar dark mode
+                const savedTheme = localStorage.getItem(STORAGE_THEME_KEY);
+                const themeToApply = savedTheme || (flagEnabled ? 'dark' : 'light');
+
+                return {
+                    ticketName: 'ConfigCat Cloud (Live)',
+                    rolloutPct: 'Remoto (ConfigCat)',
+                    flagKey: flagKeyName,
+                    flagEnabled,
+                    bucket,
+                    bucketStatus: `${bucket}% (Evaluado por Reglas Remotas)`,
+                    persistenceText: 'localStorage (Habilitada)',
+                    themeToApply
+                };
+            }
+
+            // Modo Local de Tickets
+            let simulatedFlagValue = false;
+            if (state.activeTicket === 'ticket-3') {
+                simulatedFlagValue = true;
+            } else if (state.activeTicket === 'ticket-2') {
+                simulatedFlagValue = bucket < 10;
+            } else {
+                simulatedFlagValue = false;
+            }
+
+            if (window.ConfigCatService) {
+                window.ConfigCatService.updateLocalOverrides(simulatedFlagValue);
+                flagEnabled = await window.ConfigCatService.getValueAsync(flagKeyName, false, userWithBucket);
+            } else {
+                flagEnabled = simulatedFlagValue;
+            }
+
+            state.lastEvaluatedFlagValue = flagEnabled;
+
+            switch (state.activeTicket) {
                 case 'ticket-1':
-                    // Ticket 1: 0% Rollout. Flag desactivado globalmente.
                     return {
-                        ticketName: 'Ticket 1',
+                        ticketName: 'Ticket 1 (0% Rollout)',
                         rolloutPct: '0%',
-                        canToggle: false,
+                        flagKey: flagKeyName,
+                        flagEnabled,
                         bucket,
-                        bucketStatus: `${bucket}% (No califica - Rollout apagado)`,
+                        bucketStatus: `${bucket}% (No califica - Rollout 0%)`,
                         persistenceText: 'Deshabilitada (Rollout 0%)',
                         themeToApply: 'light'
                     };
 
                 case 'ticket-2': {
-                    // Ticket 2: 10% Canary. Determinístico. Sin persistencia en localStorage.
                     const qualifies = bucket < 10;
                     return {
-                        ticketName: 'Ticket 2 (Canary)',
+                        ticketName: 'Ticket 2 (10% Canary)',
                         rolloutPct: '10%',
-                        canToggle: qualifies,
+                        flagKey: flagKeyName,
+                        flagEnabled,
                         bucket,
                         bucketStatus: qualifies
                             ? `${bucket}% (Califica para Canary < 10%)`
@@ -170,25 +256,21 @@ if (typeof window === 'undefined') {
 
                 case 'ticket-3':
                 default: {
-                    // Ticket 3: 100% GA. Todos califican. Con persistencia en localStorage.
-                    const savedTheme = localStorage.getItem(STORAGE_THEME_KEY);
-                    const themeToApply = savedTheme || 'light';
+                    const savedTheme = localStorage.getItem(STORAGE_THEME_KEY) || 'light';
                     return {
                         ticketName: 'Ticket 3 (100% GA)',
                         rolloutPct: '100%',
-                        canToggle: true,
+                        flagKey: flagKeyName,
+                        flagEnabled,
                         bucket,
                         bucketStatus: `${bucket}% (Califica - Acceso General 100%)`,
                         persistenceText: 'localStorage (Habilitada y persistente)',
-                        themeToApply
+                        themeToApply: savedTheme
                     };
                 }
             }
         }
 
-        // ---------------------------------------------------------------------
-        // 5. Aplicación del Tema al DOM
-        // ---------------------------------------------------------------------
         function applyThemeToDOM(theme) {
             htmlRoot.setAttribute('data-theme', theme);
 
@@ -202,27 +284,23 @@ if (typeof window === 'undefined') {
             }
         }
 
-        // ---------------------------------------------------------------------
-        // 6. Actualización de Interfaz y UI
-        // ---------------------------------------------------------------------
-        function renderState() {
-            const flagState = evaluateFeatureFlag();
+        async function renderState() {
+            const result = await evaluateFeatureFlag();
+            const ccStatus = window.ConfigCatService ? window.ConfigCatService.getStatus() : { isCloud: false };
 
-            // 1. Visibilidad del Toggle Container
-            if (flagState.canToggle) {
+            // El botón de alternar tema siempre está disponible
+            if (darkModeToggleContainer) {
                 darkModeToggleContainer.classList.remove('hidden');
-            } else {
-                darkModeToggleContainer.classList.add('hidden');
             }
 
-            // 2. Aplicar tema
-            applyThemeToDOM(flagState.themeToApply);
+            // Aplicar tema resultante al DOM
+            applyThemeToDOM(result.themeToApply);
 
-            // 3. Resaltar Ticket Activo en la cuadrícula de tickets
+            // Resaltar Cajas de Tickets
             Object.keys(ticketBoxes).forEach((key) => {
                 const box = ticketBoxes[key];
                 if (box) {
-                    if (key === state.activeTicket) {
+                    if (!ccStatus.isCloud && key === state.activeTicket) {
                         box.classList.add('is-active-phase');
                     } else {
                         box.classList.remove('is-active-phase');
@@ -230,73 +308,124 @@ if (typeof window === 'undefined') {
                 }
             });
 
-            // 4. Actualizar Badge de Cohorte en el Sidebar
+            // Actualizar Estado de ConfigCat en el Panel
+            if (ccStatusBadge) {
+                if (ccStatus.isCloud) {
+                    ccStatusBadge.textContent = '🟢 Cloud Conectado';
+                    ccStatusBadge.className = 'badge badge-success';
+                } else {
+                    ccStatusBadge.textContent = '🟡 Local Overrides';
+                    ccStatusBadge.className = 'badge badge-warning';
+                }
+            }
+
+            if (ccConnectionMsg) {
+                if (ccStatus.isCloud) {
+                    ccConnectionMsg.innerHTML = `Conectado a <strong>ConfigCat Cloud (.env activo)</strong>. Flag: <code>${result.flagKey}</code> = <strong>${result.flagEnabled}</strong>.`;
+                } else {
+                    ccConnectionMsg.innerHTML = `Modo: <strong>ConfigCat SDK Local Overrides</strong> (Simulador de Tickets). Clave configurada en tu <code>.env</code>.`;
+                }
+            }
+
+            if (ccSdkKeyInput && ccStatus.sdkKey) {
+                ccSdkKeyInput.value = ccStatus.sdkKey;
+            }
+
+            // Actualizar Inspector
+            if (inspector.flagKey) {
+                inspector.flagKey.textContent = result.flagKey;
+            }
+            if (inspector.flagValue) {
+                inspector.flagValue.textContent = String(result.flagEnabled);
+                inspector.flagValue.className = `val badge ${result.flagEnabled ? 'on-flag' : 'off-flag'}`;
+            }
+            if (inspector.phase) inspector.phase.textContent = result.ticketName;
+            if (inspector.rolloutPct) inspector.rolloutPct.textContent = result.rolloutPct;
+            if (inspector.userIdentifier) inspector.userIdentifier.textContent = state.currentUser.id;
+            if (inspector.userBucket) inspector.userBucket.textContent = result.bucketStatus;
+            if (inspector.persistence) inspector.persistence.textContent = result.persistenceText;
+
+            // Badge en Sidebar
             if (userCohortBadge) {
-                if (state.activeTicket === 'ticket-1') {
+                if (ccStatus.isCloud) {
+                    userCohortBadge.textContent = `ConfigCat: ${result.flagEnabled ? 'Flag ON (Activo)' : 'Flag OFF (Inactivo)'}`;
+                } else if (state.activeTicket === 'ticket-1') {
                     userCohortBadge.textContent = 'Cohort: 0% Rollout (Inactivo)';
                 } else if (state.activeTicket === 'ticket-2') {
-                    userCohortBadge.textContent = flagState.canToggle
-                        ? `Cohort: Canary ${flagState.bucket}% (Activo)`
-                        : `Cohort: Excluido ${flagState.bucket}% (Fuera de 10%)`;
+                    userCohortBadge.textContent = result.flagEnabled
+                        ? `Cohort: Canary ${result.bucket}% (Activo)`
+                        : `Cohort: Excluido ${result.bucket}% (Fuera de 10%)`;
                 } else {
                     userCohortBadge.textContent = 'Cohort: GA 100% (Acceso Total)';
                 }
             }
-
-            // 5. Actualizar Inspector de Runtime
-            if (inspector.phase) inspector.phase.textContent = flagState.ticketName;
-            if (inspector.rolloutPct) inspector.rolloutPct.textContent = flagState.rolloutPct;
-            if (inspector.userBucket) inspector.userBucket.textContent = flagState.bucketStatus;
-            if (inspector.persistence) inspector.persistence.textContent = flagState.persistenceText;
         }
 
-        // ---------------------------------------------------------------------
-        // 7. Acciones de Usuario
-        // ---------------------------------------------------------------------
+        // Alternador de Modo Claro / Oscuro
         function handleToggleTheme() {
             const currentTheme = htmlRoot.getAttribute('data-theme') || 'light';
             const nextTheme = currentTheme === 'dark' ? 'light' : 'dark';
 
-            if (state.activeTicket === 'ticket-3') {
-                localStorage.setItem(STORAGE_THEME_KEY, nextTheme);
-                applyThemeToDOM(nextTheme);
-                showToast(`Tema cambiado a ${nextTheme} (Guardado en localStorage)`);
-            } else if (state.activeTicket === 'ticket-2') {
-                state.inMemoryTheme = nextTheme;
-                applyThemeToDOM(nextTheme);
-                showToast(`Tema cambiado a ${nextTheme} (Solo en memoria - Ticket 2)`);
-            }
+            localStorage.setItem(STORAGE_THEME_KEY, nextTheme);
+            state.inMemoryTheme = nextTheme;
+            applyThemeToDOM(nextTheme);
+            showToast(`Tema cambiado a: ${nextTheme === 'dark' ? 'Modo Oscuro 🌙' : 'Modo Claro ☀️'}`);
         }
 
-        function handleSelectTicket(ticketId) {
+        async function handleSelectTicket(ticketId) {
             state.activeTicket = ticketId;
             ticketSelect.value = ticketId;
             localStorage.setItem(STORAGE_TICKET_KEY, ticketId);
 
-            renderState();
+            const ccStatus = window.ConfigCatService ? window.ConfigCatService.getStatus() : { isCloud: false };
+            if (ccStatus.isCloud) {
+                showToast('Aviso: Estás conectado a ConfigCat Cloud en vivo.');
+            } else {
+                const names = {
+                    'ticket-1': 'Ticket 1 (0% Rollout)',
+                    'ticket-2': 'Ticket 2 (10% Canary)',
+                    'ticket-3': 'Ticket 3 (100% GA)'
+                };
+                showToast(`Fase activada: ${names[ticketId] || ticketId}`);
+            }
 
-            const ticketNames = {
-                'ticket-1': 'Ticket 1 (0% Rollout - Flag apagado)',
-                'ticket-2': 'Ticket 2 (10% Canary - Sin persistencia)',
-                'ticket-3': 'Ticket 3 (100% GA - Persistencia en localStorage)'
-            };
-            showToast(`Fase activada: ${ticketNames[ticketId] || ticketId}`);
+            await renderState();
         }
 
-        function handleToggleUser() {
+        async function handleToggleUser() {
             currentUserIndex = (currentUserIndex + 1) % USERS.length;
             state.currentUser = USERS[currentUserIndex];
 
             if (userNameEl) userNameEl.textContent = state.currentUser.name;
             if (avatarEl) avatarEl.textContent = state.currentUser.initials;
 
-            renderState();
-            showToast(`Usuario: ${state.currentUser.name} (Bucket: ${computeUserBucket(state.currentUser.id)}%)`);
+            await renderState();
+            showToast(`Usuario: ${state.currentUser.name} (${computeUserBucket(state.currentUser.id)}%)`);
         }
 
-        // ---------------------------------------------------------------------
-        // 8. Mensajes Toast de Notificación
-        // ---------------------------------------------------------------------
+        async function handleConnectConfigCat() {
+            const inputVal = (ccSdkKeyInput ? ccSdkKeyInput.value : '').trim();
+            if (!inputVal) {
+                showToast('Por favor introduce una SDK Key válida');
+                return;
+            }
+
+            if (window.ConfigCatService) {
+                await window.ConfigCatService.setSdkKey(inputVal);
+                await renderState();
+                showToast('Conectado a ConfigCat Cloud SDK');
+            }
+        }
+
+        async function handleResetConfigCat() {
+            if (window.ConfigCatService) {
+                await window.ConfigCatService.resetToLocal(false);
+                if (ccSdkKeyInput) ccSdkKeyInput.value = '';
+                await renderState();
+                showToast('Restablecido a modo simulación local');
+            }
+        }
+
         function showToast(message) {
             let container = document.querySelector('.toast-container');
             if (!container) {
@@ -318,32 +447,26 @@ if (typeof window === 'undefined') {
             }, 2800);
         }
 
-        // ---------------------------------------------------------------------
-        // 9. Event Listeners
-        // ---------------------------------------------------------------------
+        // Listeners
         if (darkModeToggleBtn) {
             darkModeToggleBtn.addEventListener('click', handleToggleTheme);
         }
-
         if (ticketSelect) {
-            ticketSelect.addEventListener('change', (e) => {
-                handleSelectTicket(e.target.value);
-            });
+            ticketSelect.addEventListener('change', (e) => handleSelectTicket(e.target.value));
         }
 
         Object.keys(ticketBoxes).forEach((key) => {
             const box = ticketBoxes[key];
-            if (box) {
-                box.addEventListener('click', () => {
-                    handleSelectTicket(key);
-                });
-            }
+            if (box) box.addEventListener('click', () => handleSelectTicket(key));
         });
 
         if (userProfileCard) {
-            userProfileCard.title = 'Haz clic para alternar usuario de prueba (Bucket Canary)';
+            userProfileCard.title = 'Haz clic para alternar usuario y probar targeting';
             userProfileCard.addEventListener('click', handleToggleUser);
         }
+
+        if (ccConnectBtn) ccConnectBtn.addEventListener('click', handleConnectConfigCat);
+        if (ccResetBtn) ccResetBtn.addEventListener('click', handleResetConfigCat);
 
         const navItems = document.querySelectorAll('.nav-item');
         navItems.forEach((item) => {
@@ -354,15 +477,28 @@ if (typeof window === 'undefined') {
             });
         });
 
-        // ---------------------------------------------------------------------
-        // 10. Inicialización en Navegador
-        // ---------------------------------------------------------------------
+        // Inicialización del servicio ConfigCat
+        if (window.ConfigCatService) {
+            await window.ConfigCatService.initClient();
+            window.ConfigCatService.onConfigChanged(async () => {
+                console.log('⚡ ConfigCat: Cambio en vivo recibido');
+                showToast('ConfigCat: Configuración remota actualizada en vivo');
+                await renderState();
+            });
+        }
+
+        // Restaurar tema guardado previamente si existe
+        const savedTheme = localStorage.getItem(STORAGE_THEME_KEY);
+        if (savedTheme) {
+            applyThemeToDOM(savedTheme);
+        }
+
         const savedTicket = localStorage.getItem(STORAGE_TICKET_KEY);
         if (savedTicket && ticketBoxes[savedTicket]) {
             state.activeTicket = savedTicket;
             if (ticketSelect) ticketSelect.value = savedTicket;
         }
 
-        renderState();
+        await renderState();
     });
 }

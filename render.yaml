@@ -1,0 +1,21 @@
+# ==============================================================================
+# Render Blueprint (Infrastructure as Code)
+# ==============================================================================
+# Permite desplegar el servicio en Render con 1 solo clic desde tu repositorio.
+
+services:
+  - type: web
+    name: nexusdash-analytics
+    env: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: oregon
+    autoDeploy: true
+    healthCheckPath: /
+    envVars:
+      - key: PORT
+        value: 3000
+      - key: NODE_ENV
+        value: production
+      - key: CONFIGCAT_SDK_KEY
+        sync: false

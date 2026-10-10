@@ -5,7 +5,10 @@
   "main": "app.js",
   "scripts": {
     "start": "node app.js",
-    "dev": "node app.js"
+    "dev": "node app.js",
+    "test": "node --check app.js && node --check configcat.js && node test.js",
+    "docker:build": "docker build -t nexusdash-app .",
+    "docker:run": "docker run -p 3000:3000 --env-file .env nexusdash-app"
   },
   "keywords": [
     "feature-flags",
@@ -14,5 +17,9 @@
     "render"
   ],
   "author": "",
-  "license": "ISC"
+  "license": "ISC",
+  "dependencies": {
+    "@configcat/sdk": "^1.1.0",
+    "configcat-js": "^9.6.1"
+  }
 }
