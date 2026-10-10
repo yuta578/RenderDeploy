@@ -1,13 +1,16 @@
 /**
  * ============================================================================
- * ConfigCat Service Module (configcat.js)
+ * ConfigCat Service Module (configcat.js) — Versión 3.0 (Taller 6)
  * ============================================================================
- * Módulo independiente para la gestión y evaluación de Feature Flags con ConfigCat.
- * - Carga asíncrona del SDK en segundo plano (sin scripts embebidos en el HTML).
- * - Carga automática de la SDK Key desde .env vía /api/config.
+ * Módulo para la gestión y evaluación de Feature Flags con ConfigCat.
+ * - Soporte Multi-Flag:
+ *   1. 'dark_mode_enabled': Tema visual del dashboard.
+ *   2. 'pagos-express-v1': Módulo crítico de checkout en 1 clic (Caso Taller 6).
+ * - Carga asíncrona del SDK oficial (@configcat/sdk).
+ * - Sincronización automática de SDK Key desde .env (/api/config).
  * - Modos de operación:
- *   1. Cloud Mode: Conexión remota con AutoPoll (30s) y eventos en tiempo real (configChanged).
- *   2. Local Overrides Mode: Simulación de Tickets con el motor oficial de ConfigCat SDK.
+ *   1. Cloud Mode: Conexión remota con AutoPoll (30s) y eventos en tiempo real.
+ *   2. Local Overrides Mode: Simulación de Rollout, Canary cohorts y Kill Switch local.
  */
 
 (function (root, factory) {
@@ -25,6 +28,12 @@
     let isCloud = false;
     let sdkLoadingPromise = null;
     const changeListeners = [];
+
+    // Estado local de flags para simulación offline / overrides
+    let localFlags = {
+        'dark_mode_enabled': false,
+        'pagos-express-v1': false
+    };
 
     /**
      * Carga dinámicamente el bundle de ConfigCat SDK si aún no está presente en window.
@@ -71,7 +80,6 @@
                 const data = await res.json();
                 if (data.configCatSdkKey && data.configCatSdkKey.trim() !== '') {
                     const key = data.configCatSdkKey.trim();
-                    // Ignorar placeholder por defecto
                     if (key !== 'TU_CONFIGCAT_SDK_KEY_AQUI') {
                         return key;
                     }
@@ -131,17 +139,23 @@
             }
         }
 
-        // Modo Local Overrides (Simulador de Tickets)
+        // Modo Local Overrides (Simulador de Tickets y Flags)
         isCloud = false;
-        return updateLocalOverrides(false);
+        return updateLocalOverrides(localFlags);
     }
 
     /**
-     * Actualiza el valor del flag en modo Local Overrides con el SDK oficial.
-     * @param {boolean} flagValue
+     * Actualiza los valores de flags en modo Local Overrides con el SDK oficial.
+     * @param {boolean|object} overrides - Booleano para dark_mode o mapa de flags.
      */
-    function updateLocalOverrides(flagValue) {
-        if (!window.configcat) return null;
+    function updateLocalOverrides(overrides) {
+        if (typeof overrides === 'boolean') {
+            localFlags['dark_mode_enabled'] = overrides;
+        } else if (overrides && typeof overrides === 'object') {
+            localFlags = { ...localFlags, ...overrides };
+        }
+
+        if (typeof window === 'undefined' || !window.configcat) return null;
 
         if (client && typeof client.dispose === 'function') {
             try { client.dispose(); } catch (e) { /* ignore */ }
@@ -149,13 +163,21 @@
 
         client = window.configcat.getClient('local-simulation', window.configcat.PollingMode.ManualPoll, {
             flagOverrides: window.configcat.createFlagOverridesFromMap(
-                { 'dark_mode_enabled': Boolean(flagValue) },
+                localFlags,
                 window.configcat.OverrideBehaviour.LocalOnly
             )
         });
 
         isCloud = false;
         return client;
+    }
+
+    /**
+     * Establece el valor de un flag específico en local.
+     */
+    function setFlagOverride(flagName, value) {
+        localFlags[flagName] = Boolean(value);
+        return updateLocalOverrides(localFlags);
     }
 
     /**
@@ -171,7 +193,7 @@
         }
 
         if (!client || typeof client.getValueAsync !== 'function') {
-            return defaultValue;
+            return localFlags[flagName] !== undefined ? localFlags[flagName] : defaultValue;
         }
 
         let ccUser = null;
@@ -187,7 +209,7 @@
         try {
             return await client.getValueAsync(flagName, defaultValue, ccUser);
         } catch (err) {
-            console.error('Error al evaluar flag en ConfigCat:', err);
+            console.error(`Error al evaluar flag '${flagName}' en ConfigCat:`, err);
             return defaultValue;
         }
     }
@@ -223,7 +245,9 @@
         sdkKey = '';
         localStorage.removeItem(STORAGE_KEY);
         isCloud = false;
-        return updateLocalOverrides(flagValue);
+        localFlags['dark_mode_enabled'] = Boolean(flagValue);
+        localFlags['pagos-express-v1'] = false;
+        return updateLocalOverrides(localFlags);
     }
 
     /**
@@ -233,18 +257,25 @@
         return {
             isCloud,
             sdkKey,
-            hasKey: Boolean(sdkKey && sdkKey !== 'TU_CONFIGCAT_SDK_KEY_AQUI')
+            hasKey: Boolean(sdkKey && sdkKey !== 'TU_CONFIGCAT_SDK_KEY_AQUI'),
+            localFlags
         };
+    }
+
+    function getDetectedFlagKey() {
+        return 'dark_mode_enabled';
     }
 
     return {
         loadSdk,
         initClient,
         updateLocalOverrides,
+        setFlagOverride,
         getValueAsync,
         onConfigChanged,
         setSdkKey,
         resetToLocal,
-        getStatus
+        getStatus,
+        getDetectedFlagKey
     };
 }));

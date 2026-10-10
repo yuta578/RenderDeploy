@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Analytics Dashboard - Dark Mode Rollout</title>
+    <title>NexusDash - Continuous Deployment, Feature Flags & Safe Release (Taller 6)</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
@@ -22,26 +22,26 @@
             </div>
 
             <nav class="nav-menu">
-                <a href="#overview" class="nav-item active">
+                <a href="#overview" class="nav-item">
                     <span class="nav-icon">📈</span>
                     <span>Resumen</span>
                 </a>
-                <a href="#metrics" class="nav-item">
+                <a href="#pagos-express" class="nav-item active">
                     <span class="nav-icon">⚡</span>
-                    <span>Métricas</span>
-                </a>
-                <a href="#users" class="nav-item">
-                    <span class="nav-icon">👥</span>
-                    <span>Usuarios</span>
+                    <span>Pagos Express (Taller 6)</span>
                 </a>
                 <a href="#feature-flags" class="nav-item">
                     <span class="nav-icon">🚩</span>
-                    <span>Feature Flags</span>
+                    <span>Feature Flags & Deuda</span>
+                </a>
+                <a href="#metrics" class="nav-item">
+                    <span class="nav-icon">📊</span>
+                    <span>Observabilidad</span>
                 </a>
             </nav>
 
             <div class="sidebar-footer">
-                <div class="user-profile">
+                <div class="user-profile" id="user-profile-toggle" title="Haz clic para alternar entre Developer y QA Tester">
                     <div class="avatar">AD</div>
                     <div class="user-info">
                         <span class="user-name">Admin Dev</span>
@@ -57,10 +57,16 @@
             <header class="topbar">
                 <div class="search-bar">
                     <span class="search-icon">🔍</span>
-                    <input type="text" placeholder="Buscar reportes, usuarios o métricas..." />
+                    <input type="text" placeholder="Buscar reportes, transacciones o flags..." />
                 </div>
 
                 <div class="topbar-actions">
+                    <!-- Health Check Live Pill -->
+                    <div class="health-pill" id="health-check-indicator" title="Monitoreo en tiempo real de /api/health">
+                        <span class="status-dot green"></span>
+                        <span id="health-check-text">Render: 200 OK</span>
+                    </div>
+
                     <!-- Dark Mode Toggle Button -->
                     <div id="dark-mode-toggle-container" class="toggle-container">
                         <button id="dark-mode-toggle" class="btn-theme-toggle" aria-label="Alternar tema oscuro">
@@ -76,8 +82,351 @@
             </header>
 
             <div class="content-body">
-                <!-- Banner de Explicación de Tickets -->
-                <section class="ticket-status-card">
+                <!-- ============================================================== -->
+                <!-- SECCIÓN CENTRAL TALLER 6: CASO "PAGOS EXPRESS" & SAFE RELEASE   -->
+                <!-- ============================================================== -->
+                <section class="case-study-hero" id="pagos-express">
+                    <div class="case-header">
+                        <div class="case-title-group">
+                            <div class="badge-row">
+                                <span class="badge badge-primary">Taller 6: Continuous Deployment</span>
+                                <span class="badge badge-warning">Caso Práctico en Producción</span>
+                                <span class="badge badge-info" id="pagos-flag-status-badge">Flag: pagos-express-v1 (OFF)</span>
+                            </div>
+                            <h2>La funcionalidad de ‘Pagos Express’ ya está en main</h2>
+                            <p class="case-desc">
+                                Resuelto mediante <strong>Liberación Segura de Valor (Progressive Delivery)</strong>:
+                                Demostración interactiva en producción (Render) con Feature Toggle en ConfigCat,
+                                telemetría en tiempo real, observabilidad de errores y protocolo de Kill Switch.
+                            </p>
+                        </div>
+
+                        <!-- Controlador de Fases de Rollout -->
+                        <div class="rollout-controls-panel">
+                            <span class="controls-title">🎯 Estrategia de Rollout Progresivo:</span>
+                            <div class="phase-buttons-group">
+                                <button class="btn-phase active" data-phase="off" id="btn-phase-off">
+                                    🔴 OFF (0%)
+                                </button>
+                                <button class="btn-phase" data-phase="dogfooding" id="btn-phase-dogfooding">
+                                    🐶 Dogfooding (Interno)
+                                </button>
+                                <button class="btn-phase" data-phase="canary-20" id="btn-phase-canary">
+                                    🐤 Canary (20% Viernes)
+                                </button>
+                                <button class="btn-phase" data-phase="ga-100" id="btn-phase-ga">
+                                    🚀 100% GA (Lunes)
+                                </button>
+                                <button class="btn-phase btn-kill-switch" id="btn-kill-switch" title="Apagado inmediato en ConfigCat sin redeploy">
+                                    🚨 KILL SWITCH
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Grid Interactivo de Doble Columna: Checkout vs Telemetría -->
+                    <div class="case-grid">
+                        <!-- Columna Izquierda: Módulo de Checkout Interactivo -->
+                        <div class="card checkout-card">
+                            <div class="card-header">
+                                <div>
+                                    <h3>🛒 Experiencia de Checkout del Usuario</h3>
+                                    <span class="card-subtitle" id="checkout-experience-subtitle">
+                                        Modo: Formulario Tradicional (Toggle Inactivo)
+                                    </span>
+                                </div>
+                                <span class="badge" id="checkout-toggle-pill">Toggle: OFF</span>
+                            </div>
+
+                            <div class="card-body">
+                                <!-- Vista 1: Checkout Tradicional (Cuando Toggle está OFF) -->
+                                <div id="checkout-traditional-view" class="checkout-view">
+                                    <div class="alert-box alert-neutral">
+                                        <span>ℹ️</span>
+                                        <div>
+                                            <strong>Flujo Tradicional (4 Pasos - Alta Fricción):</strong>
+                                            <p>El usuario debe ingresar manualmente 16 dígitos de tarjeta, fecha de expiración y CVV. Tasa de abandono estimada: 68%.</p>
+                                        </div>
+                                    </div>
+
+                                    <form class="checkout-form" id="form-traditional-checkout" onsubmit="return false;">
+                                        <div class="form-group">
+                                            <label>Titular de la Tarjeta</label>
+                                            <input type="text" value="Jhoan Guevara" placeholder="Nombre completo" />
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Número de Tarjeta (16 dígitos)</label>
+                                            <input type="text" value="•••• •••• •••• 4242" placeholder="4000 1234 5678 9010" />
+                                        </div>
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label>Vencimiento</label>
+                                                <input type="text" value="12/28" placeholder="MM/AA" />
+                                            </div>
+                                            <div class="form-group">
+                                                <label>CVV / CVC</label>
+                                                <input type="password" value="123" placeholder="123" />
+                                            </div>
+                                        </div>
+
+                                        <div class="order-summary">
+                                            <div class="order-item">
+                                                <span>Suscripción NexusDash Pro</span>
+                                                <strong>$89.90 USD</strong>
+                                            </div>
+                                            <div class="order-item">
+                                                <span>Impuestos / Processing Fee</span>
+                                                <strong>$0.00 USD</strong>
+                                            </div>
+                                            <div class="order-total">
+                                                <span>Total a Pagar:</span>
+                                                <span class="total-amount">$89.90 USD</span>
+                                            </div>
+                                        </div>
+
+                                        <button type="button" class="btn btn-secondary btn-block" id="btn-pay-traditional">
+                                            💳 Procesar Pago Tradicional (Demora ~420ms)
+                                        </button>
+                                    </form>
+                                </div>
+
+                                <!-- Vista 2: Pagos Express con 1 Clic (Cuando Toggle está ON) -->
+                                <div id="checkout-express-view" class="checkout-view hidden">
+                                    <div class="alert-box alert-success">
+                                        <span>⚡</span>
+                                        <div>
+                                            <strong>¡Funcionalidad Pagos Express Activa por Feature Toggle!</strong>
+                                            <p>Checkout instantáneo con token seguro guardado. Fricción eliminada a 1 solo clic.</p>
+                                        </div>
+                                    </div>
+
+                                    <div class="express-card-box">
+                                        <div class="card-chip">💳</div>
+                                        <div class="card-brand">VISA</div>
+                                        <div class="card-number">•••• •••• •••• 4242</div>
+                                        <div class="card-details">
+                                            <span>Titular: <strong>JHOAN GUEVARA</strong></span>
+                                            <span>Exp: <strong>12/28</strong></span>
+                                        </div>
+                                        <div class="token-badge">🔒 Tokenizado & Verificado</div>
+                                    </div>
+
+                                    <div class="order-summary">
+                                        <div class="order-item">
+                                            <span>Suscripción NexusDash Pro</span>
+                                            <strong>$89.90 USD</strong>
+                                        </div>
+                                        <div class="order-total">
+                                            <span>Total a Pagar:</span>
+                                            <span class="total-amount text-primary">$89.90 USD</span>
+                                        </div>
+                                    </div>
+
+                                    <button type="button" class="btn btn-express btn-block" id="btn-pay-express">
+                                        <span class="btn-icon">⚡</span>
+                                        <span>Completar Pago Express con 1 Clic</span>
+                                    </button>
+                                </div>
+
+                                <!-- Resultado de Transacción / Feedback en Vivo -->
+                                <div id="transaction-result" class="transaction-receipt hidden">
+                                    <div class="receipt-header">
+                                        <span class="receipt-icon">✅</span>
+                                        <h4>¡Transacción Procesada con Éxito!</h4>
+                                    </div>
+                                    <div class="receipt-body">
+                                        <div class="receipt-row">
+                                            <span>ID Transacción:</span>
+                                            <code id="receipt-tx-id">TXN-872910</code>
+                                        </div>
+                                        <div class="receipt-row">
+                                            <span>Método:</span>
+                                            <strong id="receipt-method">Pago Express (1-Clic)</strong>
+                                        </div>
+                                        <div class="receipt-row">
+                                            <span>Latencia de Respuesta:</span>
+                                            <span id="receipt-latency" class="badge badge-success">85 ms</span>
+                                        </div>
+                                        <div class="receipt-row">
+                                            <span>Estado en Pasarela:</span>
+                                            <span class="badge badge-primary">200 OK (Approved)</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Columna Derecha: Tablero de Observabilidad y Telemetría -->
+                        <div class="card telemetry-card">
+                            <div class="card-header">
+                                <div>
+                                    <h3>📡 Telemetría y Métricas en Tiempo Real</h3>
+                                    <span class="card-subtitle">Inspección de SLIs requeridos por el DoD v3.0</span>
+                                </div>
+                                <span class="badge badge-live">Live SLIs</span>
+                            </div>
+
+                            <div class="card-body">
+                                <div class="telemetry-grid">
+                                    <!-- Métrica 1: Tasa de Error -->
+                                    <div class="telemetry-box" id="box-error-rate">
+                                        <div class="telemetry-head">
+                                            <span class="telemetry-label">Tasa de Error en Pagos</span>
+                                            <span class="threshold-pill">Alarma si > 1.0%</span>
+                                        </div>
+                                        <div class="telemetry-metric">
+                                            <span class="telemetry-value text-emerald" id="val-error-rate">0.12%</span>
+                                            <span class="telemetry-badge positive">🟢 Óptimo (< 0.5%)</span>
+                                        </div>
+                                        <div class="progress-bar-wrap">
+                                            <div class="progress-bar" id="bar-error-rate" style="width: 12%"></div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Métrica 2: Conversión -->
+                                    <div class="telemetry-box">
+                                        <div class="telemetry-head">
+                                            <span class="telemetry-label">Tasa de Conversión</span>
+                                            <span class="threshold-pill">Meta: > 7.5%</span>
+                                        </div>
+                                        <div class="telemetry-metric">
+                                            <span class="telemetry-value" id="val-conversion-rate">4.62%</span>
+                                            <span class="telemetry-badge" id="badge-conversion-diff">Baseline</span>
+                                        </div>
+                                        <p class="telemetry-hint">
+                                            Con Pagos Express: <strong id="val-conversion-projected">+92.6% incremento proyectado</strong>.
+                                        </p>
+                                    </div>
+
+                                    <!-- Métrica 3: Latencia p95 -->
+                                    <div class="telemetry-box">
+                                        <div class="telemetry-head">
+                                            <span class="telemetry-label">Latencia p95 de Checkout</span>
+                                            <span class="threshold-pill">SLO: < 250ms</span>
+                                        </div>
+                                        <div class="telemetry-metric">
+                                            <span class="telemetry-value text-blue" id="val-latency-p95">450 ms</span>
+                                            <span class="telemetry-badge" id="badge-latency-diff">Tradicional</span>
+                                        </div>
+                                        <p class="telemetry-hint">
+                                            Pagos Express optimiza el tiempo de checkout a <strong class="text-emerald">85 ms</strong>.
+                                        </p>
+                                    </div>
+
+                                    <!-- Métrica 4: Pipeline Health -->
+                                    <div class="telemetry-box">
+                                        <div class="telemetry-head">
+                                            <span class="telemetry-label">Salud del Deploy / Render</span>
+                                            <span class="threshold-pill">/api/health</span>
+                                        </div>
+                                        <div class="telemetry-metric">
+                                            <span class="telemetry-value text-emerald" id="val-health-status">100% Healthy</span>
+                                            <span class="telemetry-badge positive">Uptime: 99.98%</span>
+                                        </div>
+                                        <p class="telemetry-hint">
+                                            Resolución al fallo de 11 min: Endpoint de salud activo con verificaciones automáticas.
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <!-- Registro de Auditoría de Rollout -->
+                                <div class="audit-log-wrap">
+                                    <span class="audit-title">📝 Registro de Decisiones de Liberación:</span>
+                                    <ul class="audit-list" id="audit-log-list">
+                                        <li>
+                                            <span class="time">Hace 9 días:</span>
+                                            <span>Código fusionado a <code>main</code> y desplegado en Render (Toggle: OFF 0%).</span>
+                                        </li>
+                                        <li>
+                                            <span class="time">Sprint Review:</span>
+                                            <span>Demostración de valor en vivo al PO y Stakeholder con Toggle ON/OFF.</span>
+                                        </li>
+                                        <li>
+                                            <span class="time">Acuerdo:</span>
+                                            <span>Plan de observación 24-48h con Canary al 20% para el viernes.</span>
+                                        </li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ============================================================== -->
+                <!-- SECCIÓN: GOBIERNO DE FEATURE TOGGLES Y LIMPIEZA DE DEUDA       -->
+                <!-- ============================================================== -->
+                <section class="card toggle-governance-card" id="feature-flags">
+                    <div class="card-header">
+                        <div>
+                            <span class="badge badge-warning">Gobierno de Toggles</span>
+                            <h2>Inventario y Auditoría de Deuda Técnica (Hecho Problemático 3)</h2>
+                            <p class="card-desc">
+                                Regla del Playbook 3.0: <em>Todo Feature Toggle debe tener un TTL ≤ 30 días</em>. Los flags antiguos sin retirar aumentan la complejidad ciclomática.
+                            </p>
+                        </div>
+                        <button class="btn btn-primary" id="btn-trigger-cleanup">
+                            🧹 Generar PR de Limpieza de Deuda (#142)
+                        </button>
+                    </div>
+
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table-governance">
+                                <thead>
+                                    <tr>
+                                        <th>Nombre del Flag</th>
+                                        <th>Días Activo</th>
+                                        <th>Estado Actual</th>
+                                        <th>Clasificación</th>
+                                        <th>Acción Requerida</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr class="row-debt-critical">
+                                        <td><code>promo-banner-summer</code></td>
+                                        <td><span class="badge badge-danger">52 días</span></td>
+                                        <td>100% GA</td>
+                                        <td><strong class="text-danger">🔴 Deuda Crítica (> 30 días)</strong></td>
+                                        <td class="action-cell">Retirar código condicional y borrar flag</td>
+                                    </tr>
+                                    <tr class="row-debt-critical">
+                                        <td><code>new-nav-v2</code></td>
+                                        <td><span class="badge badge-danger">48 días</span></td>
+                                        <td>100% GA</td>
+                                        <td><strong class="text-danger">🔴 Deuda Crítica (> 30 días)</strong></td>
+                                        <td class="action-cell">Retirar código condicional y borrar flag</td>
+                                    </tr>
+                                    <tr class="row-debt-critical">
+                                        <td><code>recommendation-engine-v1</code></td>
+                                        <td><span class="badge badge-danger">46 días</span></td>
+                                        <td>100% GA</td>
+                                        <td><strong class="text-danger">🔴 Deuda Crítica (> 30 días)</strong></td>
+                                        <td class="action-cell">Retirar código condicional y borrar flag</td>
+                                    </tr>
+                                    <tr class="row-active-rollout">
+                                        <td><code>pagos-express-v1</code></td>
+                                        <td><span class="badge badge-success">9 días</span></td>
+                                        <td><span id="table-pagos-status">Rollout 0% (OFF)</span></td>
+                                        <td><strong class="text-emerald">🟢 Rollout Controlado (TTL: 14 días)</strong></td>
+                                        <td class="action-cell">En observación según protocolo Canary</td>
+                                    </tr>
+                                    <tr class="row-active-rollout">
+                                        <td><code>dark_mode_enabled</code></td>
+                                        <td><span class="badge badge-success">5 días</span></td>
+                                        <td>Fase 3 (100% GA)</td>
+                                        <td><strong class="text-emerald">🟢 Estable (TTL: 21 días)</strong></td>
+                                        <td class="action-cell">Programar ticket de retiro en Sprint+1</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ============================================================== -->
+                <!-- SECCIÓN ORIGINAL: TICKETS MODO OSCURO & CONFIGCAT CLOUD        -->
+                <!-- ============================================================== -->
+                <section class="ticket-status-card" id="overview">
                     <div class="ticket-header">
                         <div>
                             <span class="badge badge-primary">Estrategia de Rollout</span>
@@ -88,8 +437,7 @@
                             <select id="ticket-select" class="ticket-selector">
                                 <option value="ticket-1">Ticket 1: Flag Apagado (0% rollout)</option>
                                 <option value="ticket-2">Ticket 2: Flag 10% Usuarios (Sin persistencia)</option>
-                                <option value="ticket-3" selected>Ticket 3: Flag 100% (Con persistencia localStorage)
-                                </option>
+                                <option value="ticket-3" selected>Ticket 3: Flag 100% (Con persistencia localStorage)</option>
                             </select>
                         </div>
                     </div>
@@ -98,31 +446,28 @@
                         <div class="ticket-box" id="ticket-box-1">
                             <div class="ticket-badge">Ticket 1</div>
                             <h3>Variables CSS & Tema Raíz</h3>
-                            <p>Variables en <code>:root[data-theme="dark"]</code> y lógica de clases. Flag
-                                <code>dark_mode_enabled: false</code>.</p>
+                            <p>Variables en <code>:root[data-theme="dark"]</code> y lógica de clases. Flag <code>dark_mode_enabled: false</code>.</p>
                             <span class="status-pill off">0% Rollout (Oculto)</span>
                         </div>
 
                         <div class="ticket-box" id="ticket-box-2">
                             <div class="ticket-badge">Ticket 2</div>
                             <h3>Botón Toggle (Canary 10%)</h3>
-                            <p>Toggle visible únicamente al 10% de los usuarios mediante hashing de ID. Sin
-                                persistencia.</p>
+                            <p>Toggle visible únicamente al 10% de los usuarios mediante hashing de ID. Sin persistencia.</p>
                             <span class="status-pill canary">10% Canary</span>
                         </div>
 
                         <div class="ticket-box" id="ticket-box-3">
                             <div class="ticket-badge">Ticket 3</div>
                             <h3>Persistencia & GA (100%)</h3>
-                            <p>Guarda la preferencia en <code>localStorage</code> / backend y eleva la activación al
-                                100% de la base.</p>
+                            <p>Guarda la preferencia en <code>localStorage</code> / backend y eleva la activación al 100% de la base.</p>
                             <span class="status-pill active">100% GA (Persistente)</span>
                         </div>
                     </div>
                 </section>
 
                 <!-- KPI Metrics Grid -->
-                <section class="kpi-grid">
+                <section class="kpi-grid" id="metrics">
                     <div class="metric-card">
                         <div class="metric-icon blue">💰</div>
                         <div class="metric-details">
@@ -160,7 +505,7 @@
                     </div>
                 </section>
 
-                <!-- Analytics Details Grid -->
+                <!-- Dashboard Details Grid con Panel de ConfigCat -->
                 <section class="dashboard-grid">
                     <div class="card chart-card">
                         <div class="card-header">
@@ -209,32 +554,28 @@
                                     <code class="val" id="info-sdk-provider">@configcat/sdk</code>
                                 </li>
                                 <li>
-                                    <span class="label">Flag Key:</span>
+                                    <span class="label">Flag Key (Tema):</span>
                                     <code class="val">dark_mode_enabled</code>
                                 </li>
                                 <li>
-                                    <span class="label">Valor en ConfigCat:</span>
+                                    <span class="label">Valor Flag Tema:</span>
                                     <span id="info-flag-value" class="val badge">false</span>
                                 </li>
                                 <li>
-                                    <span class="label">Fase Activa:</span>
-                                    <span id="info-current-phase" class="val">Ticket 3</span>
+                                    <span class="label">Flag Key (Pagos):</span>
+                                    <code class="val">pagos-express-v1</code>
                                 </li>
                                 <li>
-                                    <span class="label">Porcentaje Rollout:</span>
-                                    <span id="info-rollout-pct" class="val">100%</span>
+                                    <span class="label">Valor Flag Pagos:</span>
+                                    <span id="info-pagos-flag-value" class="val badge off-flag">false</span>
                                 </li>
                                 <li>
-                                    <span class="label">Usuario ConfigCat:</span>
+                                    <span class="label">Usuario Activo:</span>
                                     <code class="val" id="info-user-identifier">admin_5</code>
                                 </li>
                                 <li>
                                     <span class="label">User Cohort Bucket:</span>
                                     <span id="info-user-bucket" class="val">7% (Califica)</span>
-                                </li>
-                                <li>
-                                    <span class="label">Persistencia Activa:</span>
-                                    <span id="info-persistence-status" class="val">localStorage (Habilitada)</span>
                                 </li>
                                 <li>
                                     <span class="label">Tema Actual en DOM:</span>
@@ -248,6 +589,7 @@
         </main>
     </div>
 
+    <!-- Scripts de la Aplicación -->
     <script src="configcat.js"></script>
     <script src="app.js"></script>
 </body>

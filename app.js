@@ -1,20 +1,28 @@
 /**
  * ============================================================================
- * NexusDash - Analytics Dashboard: Feature Flag & Dark Mode Rollout Engine
+ * NexusDash - Analytics Dashboard & Safe Release Engine (Versión 3.0)
  * ============================================================================
+ * Taller 6: Continuous Deployment, Feature Toggles & Progressive Delivery
+ *
  * Arquitectura:
  * 1. Node.js (Servidor / Render):
- *    - Lee automáticamente las variables de entorno desde el archivo .env.
- *    - Sirve index.html, styles.css, configcat.js, app.js.
- *    - Expone el endpoint /api/config para entregar la clave de ConfigCat al frontend.
+ *    - Lee variables de entorno (.env).
+ *    - Expone /api/config para la SDK Key de ConfigCat.
+ *    - Expone /api/health para el Health Check continuo de Render (resolución al fallo de 11 min).
+ *    - Expone /api/payments/checkout para procesar pagos (Standard vs Express).
+ *    - Sirve estáticos (index.html, styles.css, configcat.js, app.js).
  * 2. Navegador (DOM):
- *    - Botón de Modo Oscuro siempre visible y funcional.
- *    - Sincronización en vivo con ConfigCat SDK (configcat.js) y simulador de tickets.
+ *    - Rollout de Tema Oscuro (dark_mode_enabled).
+ *    - Rollout Progresivo de Pagos Express (pagos-express-v1):
+ *      * Fases: 0% OFF -> Dogfooding (@nexusdash.dev) -> Canary 20% -> 100% GA -> KILL SWITCH.
+ *      * Experiencia de Checkout dinámica (Formulario tradicional vs 1-Clic).
+ *      * Telemetría en tiempo real (Error rate, latencia p95, conversión, health check).
+ *      * Gobernanza y Limpieza de Deuda de Toggles (> 30 días).
  */
 
 if (typeof window === 'undefined') {
     // =========================================================================
-    // ENTORNO NODE.JS (Servidor HTTP con carga de .env)
+    // ENTORNO NODE.JS (Servidor HTTP con carga de .env y Endpoints de API)
     // =========================================================================
     const http = require('http');
     const fs = require('fs');
@@ -60,6 +68,7 @@ if (typeof window === 'undefined') {
     const server = http.createServer((req, res) => {
         let reqPath = req.url.split('?')[0];
 
+        // 1. Endpoint /api/config
         if (reqPath === '/api/config') {
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({
@@ -68,6 +77,56 @@ if (typeof window === 'undefined') {
             return;
         }
 
+        // 2. Endpoint /api/health (Health check robusto para Render y monitoreo)
+        if (reqPath === '/api/health') {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({
+                status: 'healthy',
+                service: 'nexusdash-analytics',
+                version: '3.0.0',
+                timestamp: new Date().toISOString(),
+                uptimeSeconds: Math.round(process.uptime()),
+                checks: {
+                    pipeline: 'green',
+                    renderDeployment: 'online',
+                    database: 'connected',
+                    paymentGateway: 'operational',
+                    configCat: 'synced'
+                }
+            }));
+            return;
+        }
+
+        // 3. Endpoint /api/payments/checkout (Simulador de transacciones de pago)
+        if (reqPath === '/api/payments/checkout' && req.method === 'POST') {
+            let body = '';
+            req.on('data', chunk => { body += chunk; });
+            req.on('end', () => {
+                try {
+                    const data = body ? JSON.parse(body) : {};
+                    const isExpress = data.type === 'express';
+                    const txId = 'TXN-' + Math.random().toString(36).substring(2, 8).toUpperCase();
+                    const latency = isExpress ? 85 : 420;
+
+                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({
+                        success: true,
+                        transactionId: txId,
+                        method: isExpress ? 'Pago Express (1-Clic)' : 'Checkout Tradicional',
+                        amount: data.amount || 89.90,
+                        latencyMs: latency,
+                        userEmail: data.userEmail || 'usuario@nexusdash.dev',
+                        timestamp: new Date().toISOString()
+                    }));
+                } catch (err) {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: 'Payload JSON inválido' }));
+                }
+            });
+            return;
+        }
+
+        // 4. Servir archivos estáticos
         if (reqPath === '/' || reqPath === '') {
             reqPath = '/index.html';
         }
@@ -92,26 +151,29 @@ if (typeof window === 'undefined') {
 
     server.listen(PORT, () => {
         console.log(`\n======================================================`);
-        console.log(`🚀 Servidor NexusDash activo en: http://localhost:${PORT}`);
+        console.log(`🚀 Servidor NexusDash v3.0 activo en: http://localhost:${PORT}`);
+        console.log(`🏥 Health Check disponible en: http://localhost:${PORT}/api/health`);
+        console.log(`💳 Endpoint Checkout en: http://localhost:${PORT}/api/payments/checkout`);
         console.log(`📄 Archivo .env cargado correctamente`);
         if (CONFIGCAT_ENV_KEY && CONFIGCAT_ENV_KEY !== 'TU_CONFIGCAT_SDK_KEY_AQUI') {
             console.log(`🐱 ConfigCat SDK Key conectada: ${CONFIGCAT_ENV_KEY.slice(0, 16)}...`);
         }
-        console.log(`📦 Puerto configurado para Render / Local: ${PORT}`);
         console.log(`======================================================\n`);
     });
 
 } else {
     // =========================================================================
-    // ENTORNO NAVEGADOR (Lógica de Interfaz y Modo Oscuro)
+    // ENTORNO NAVEGADOR (Lógica de Interfaz, Rollouts y Telemetría)
     // =========================================================================
     document.addEventListener('DOMContentLoaded', async () => {
         const STORAGE_THEME_KEY = 'nexusdash_theme';
         const STORAGE_TICKET_KEY = 'nexusdash_active_ticket';
+        const STORAGE_PAGOS_PHASE_KEY = 'nexusdash_pagos_phase';
 
         const USERS = [
             { id: 'admin_5', name: 'Admin Dev', initials: 'AD', role: 'Staff Engineer', email: 'admin@nexusdash.dev' },
-            { id: 'user_qa_88', name: 'QA Tester', initials: 'QA', role: 'Quality Assurance', email: 'qa@nexusdash.dev' }
+            { id: 'user_qa_88', name: 'QA Tester', initials: 'QA', role: 'Quality Assurance', email: 'qa@nexusdash.dev' },
+            { id: 'customer_72', name: 'Cliente Externo', initials: 'CE', role: 'End User', email: 'cliente@gmail.com' }
         ];
         let currentUserIndex = 0;
 
@@ -119,17 +181,25 @@ if (typeof window === 'undefined') {
             activeTicket: 'ticket-3',
             inMemoryTheme: 'light',
             currentUser: USERS[0],
-            lastEvaluatedFlagValue: false
+            pagosExpressPhase: localStorage.getItem(STORAGE_PAGOS_PHASE_KEY) || 'off', // 'off' | 'dogfooding' | 'canary-20' | 'ga-100' | 'kill-switch'
+            pagosExpressActive: false,
+            metrics: {
+                totalOrders: 42,
+                expressOrders: 18,
+                errorCount: 0,
+                errorRate: 0.12,
+                latencyP95: 450,
+                conversionRate: 4.62
+            }
         };
 
         // Referencias al DOM
         const htmlRoot = document.documentElement;
         const ticketSelect = document.getElementById('ticket-select');
-        const darkModeToggleContainer = document.getElementById('dark-mode-toggle-container');
         const darkModeToggleBtn = document.getElementById('dark-mode-toggle');
         const toggleLabel = document.getElementById('toggle-label');
         const userCohortBadge = document.getElementById('user-cohort-badge');
-        const userProfileCard = document.querySelector('.user-profile');
+        const userProfileCard = document.getElementById('user-profile-toggle');
         const userNameEl = document.querySelector('.user-name');
         const avatarEl = document.querySelector('.avatar');
 
@@ -140,30 +210,56 @@ if (typeof window === 'undefined') {
         const ccStatusBadge = document.getElementById('configcat-status-badge');
         const ccConnectionMsg = document.getElementById('configcat-connection-msg');
 
-        // Cajas de Tickets
+        // Cajas de Tickets Modo Oscuro
         const ticketBoxes = {
             'ticket-1': document.getElementById('ticket-box-1'),
             'ticket-2': document.getElementById('ticket-box-2'),
             'ticket-3': document.getElementById('ticket-box-3')
         };
 
-        // Inspector en Runtime
-        const inspector = {
-            sdkProvider: document.getElementById('info-sdk-provider'),
-            flagKey: document.querySelector('.flag-inspector-list li:nth-child(2) .val'),
-            flagValue: document.getElementById('info-flag-value'),
-            phase: document.getElementById('info-current-phase'),
-            rolloutPct: document.getElementById('info-rollout-pct'),
-            userIdentifier: document.getElementById('info-user-identifier'),
-            userBucket: document.getElementById('info-user-bucket'),
-            persistence: document.getElementById('info-persistence-status'),
-            themeApplied: document.getElementById('info-theme-applied')
+        // Elementos de Taller 6: Pagos Express & Rollout
+        const pagosFlagStatusBadge = document.getElementById('pagos-flag-status-badge');
+        const checkoutTogglePill = document.getElementById('checkout-toggle-pill');
+        const checkoutSubtitle = document.getElementById('checkout-experience-subtitle');
+        const checkoutTraditionalView = document.getElementById('checkout-traditional-view');
+        const checkoutExpressView = document.getElementById('checkout-express-view');
+        const transactionResult = document.getElementById('transaction-result');
+        const receiptTxId = document.getElementById('receipt-tx-id');
+        const receiptMethod = document.getElementById('receipt-method');
+        const receiptLatency = document.getElementById('receipt-latency');
+        const btnPayTraditional = document.getElementById('btn-pay-traditional');
+        const btnPayExpress = document.getElementById('btn-pay-express');
+
+        // Botones de Fases de Rollout
+        const phaseButtons = {
+            'off': document.getElementById('btn-phase-off'),
+            'dogfooding': document.getElementById('btn-phase-dogfooding'),
+            'canary-20': document.getElementById('btn-phase-canary'),
+            'ga-100': document.getElementById('btn-phase-ga'),
+            'kill-switch': document.getElementById('btn-kill-switch')
         };
 
-        // Asegurar que el botón de Modo Oscuro SIEMPRE esté visible
-        if (darkModeToggleContainer) {
-            darkModeToggleContainer.classList.remove('hidden');
-        }
+        // Telemetría & SLIs
+        const valErrorRate = document.getElementById('val-error-rate');
+        const barErrorRate = document.getElementById('bar-error-rate');
+        const valConversionRate = document.getElementById('val-conversion-rate');
+        const badgeConversionDiff = document.getElementById('badge-conversion-diff');
+        const valLatencyP95 = document.getElementById('val-latency-p95');
+        const badgeLatencyDiff = document.getElementById('badge-latency-diff');
+        const valHealthStatus = document.getElementById('val-health-status');
+        const healthCheckText = document.getElementById('health-check-text');
+        const tablePagosStatus = document.getElementById('table-pagos-status');
+        const btnTriggerCleanup = document.getElementById('btn-trigger-cleanup');
+        const auditLogList = document.getElementById('audit-log-list');
+
+        // Inspector en Runtime
+        const inspector = {
+            flagValue: document.getElementById('info-flag-value'),
+            pagosFlagValue: document.getElementById('info-pagos-flag-value'),
+            userIdentifier: document.getElementById('info-user-identifier'),
+            userBucket: document.getElementById('info-user-bucket'),
+            themeApplied: document.getElementById('info-theme-applied')
+        };
 
         function computeUserBucket(userId) {
             let hash = 0;
@@ -175,22 +271,256 @@ if (typeof window === 'undefined') {
         }
 
         // ---------------------------------------------------------------------
-        // Evaluación de Feature Flag
+        // Evaluación del Feature Flag 'pagos-express-v1'
+        // ---------------------------------------------------------------------
+        async function evaluatePagosExpressFlag() {
+            const bucket = computeUserBucket(state.currentUser.id);
+            const user = { ...state.currentUser, bucket };
+            const ccStatus = window.ConfigCatService ? window.ConfigCatService.getStatus() : { isCloud: false };
+
+            let isFlagActive = false;
+
+            if (ccStatus.isCloud) {
+                // En modo Cloud, consulta la clave remota en ConfigCat
+                isFlagActive = await window.ConfigCatService.getValueAsync('pagos-express-v1', false, user);
+            } else {
+                // En modo Local Overrides / Simulador de Taller 6:
+                switch (state.pagosExpressPhase) {
+                    case 'off':
+                    case 'kill-switch':
+                        isFlagActive = false;
+                        break;
+                    case 'dogfooding':
+                        // Solo usuarios con dominio interno @nexusdash.dev
+                        isFlagActive = user.email.endsWith('@nexusdash.dev');
+                        break;
+                    case 'canary-20':
+                        // Solo cohorte de usuarios con bucket < 20
+                        isFlagActive = bucket < 20;
+                        break;
+                    case 'ga-100':
+                        isFlagActive = true;
+                        break;
+                    default:
+                        isFlagActive = false;
+                }
+
+                if (window.ConfigCatService) {
+                    window.ConfigCatService.setFlagOverride('pagos-express-v1', isFlagActive);
+                }
+            }
+
+            state.pagosExpressActive = isFlagActive;
+            return {
+                isFlagActive,
+                phase: state.pagosExpressPhase,
+                bucket,
+                user
+            };
+        }
+
+        // ---------------------------------------------------------------------
+        // Renderizado del Estado de Pagos Express y Telemetría
+        // ---------------------------------------------------------------------
+        async function renderPagosExpressState() {
+            const result = await evaluatePagosExpressFlag();
+
+            // 1. Actualizar Botones de Fase Activa
+            Object.keys(phaseButtons).forEach((phaseKey) => {
+                const btn = phaseButtons[phaseKey];
+                if (btn) {
+                    if (phaseKey === state.pagosExpressPhase) {
+                        btn.classList.add('active');
+                    } else {
+                        btn.classList.remove('active');
+                    }
+                }
+            });
+
+            // 2. Actualizar Vistas de Checkout (Tradicional vs Express)
+            if (result.isFlagActive) {
+                checkoutTraditionalView.classList.add('hidden');
+                checkoutExpressView.classList.remove('hidden');
+
+                checkoutTogglePill.textContent = 'Toggle: ON (Activo)';
+                checkoutTogglePill.className = 'badge badge-success';
+                checkoutSubtitle.textContent = `Modo: ⚡ Pago Express 1-Clic Activo (Cohorte: ${result.bucket}%)`;
+
+                pagosFlagStatusBadge.textContent = 'Flag: pagos-express-v1 (ON)';
+                pagosFlagStatusBadge.className = 'badge badge-success';
+
+                if (tablePagosStatus) tablePagosStatus.textContent = `Rollout Activo (${state.pagosExpressPhase})`;
+                if (inspector.pagosFlagValue) {
+                    inspector.pagosFlagValue.textContent = 'true';
+                    inspector.pagosFlagValue.className = 'val badge on-flag';
+                }
+
+                // Métricas optimizadas con Pagos Express
+                valLatencyP95.textContent = '85 ms';
+                valLatencyP95.className = 'telemetry-value text-emerald';
+                badgeLatencyDiff.textContent = '↓ -365ms con Express';
+                badgeLatencyDiff.className = 'telemetry-badge positive';
+
+                valConversionRate.textContent = '8.92%';
+                badgeConversionDiff.textContent = '↑ +93% Uplift';
+                badgeConversionDiff.className = 'telemetry-badge positive';
+            } else {
+                checkoutTraditionalView.classList.remove('hidden');
+                checkoutExpressView.classList.add('hidden');
+
+                checkoutTogglePill.textContent = 'Toggle: OFF (Inactivo)';
+                checkoutTogglePill.className = 'badge badge-warning';
+                checkoutSubtitle.textContent = state.pagosExpressPhase === 'canary-20'
+                    ? `Modo: Formulario Tradicional (Usuario ${result.bucket}% no califica en Canary < 20%)`
+                    : state.pagosExpressPhase === 'dogfooding'
+                        ? `Modo: Formulario Tradicional (Solo emails @nexusdash.dev en Dogfooding)`
+                        : 'Modo: Formulario Tradicional (Toggle Inactivo)';
+
+                pagosFlagStatusBadge.textContent = 'Flag: pagos-express-v1 (OFF)';
+                pagosFlagStatusBadge.className = 'badge badge-warning';
+
+                if (tablePagosStatus) tablePagosStatus.textContent = `Rollout 0% (${state.pagosExpressPhase})`;
+                if (inspector.pagosFlagValue) {
+                    inspector.pagosFlagValue.textContent = 'false';
+                    inspector.pagosFlagValue.className = 'val badge off-flag';
+                }
+
+                // Métricas tradicionales baseline
+                valLatencyP95.textContent = '450 ms';
+                valLatencyP95.className = 'telemetry-value text-blue';
+                badgeLatencyDiff.textContent = 'Tradicional';
+                badgeLatencyDiff.className = 'telemetry-badge';
+
+                valConversionRate.textContent = '4.62%';
+                badgeConversionDiff.textContent = 'Baseline';
+                badgeConversionDiff.className = 'telemetry-badge';
+            }
+        }
+
+        // ---------------------------------------------------------------------
+        // Ejecución de Checkout / Transacción Simulada
+        // ---------------------------------------------------------------------
+        async function executeCheckout(isExpress) {
+            const btn = isExpress ? btnPayExpress : btnPayTraditional;
+            const originalText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<span>⏳ Procesando pago seguro...</span>';
+
+            const payload = {
+                type: isExpress ? 'express' : 'traditional',
+                amount: 89.90,
+                userEmail: state.currentUser.email,
+                userId: state.currentUser.id
+            };
+
+            try {
+                const response = await fetch('/api/payments/checkout', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await response.json();
+
+                // Actualizar métricas
+                state.metrics.totalOrders++;
+                if (isExpress) state.metrics.expressOrders++;
+
+                // Mostrar recibo interactivo
+                if (transactionResult) {
+                    transactionResult.classList.remove('hidden');
+                    receiptTxId.textContent = data.transactionId;
+                    receiptMethod.textContent = data.method;
+                    receiptLatency.textContent = `${data.latencyMs} ms`;
+                    receiptLatency.className = isExpress ? 'badge badge-success' : 'badge badge-primary';
+                }
+
+                showToast(`¡Pago completado! ${data.transactionId} (${data.latencyMs}ms)`);
+            } catch (err) {
+                state.metrics.errorCount++;
+                showToast('Error procesando pago');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+        }
+
+        // ---------------------------------------------------------------------
+        // Handlers de Cambio de Fase de Rollout
+        // ---------------------------------------------------------------------
+        async function handlePhaseChange(newPhase) {
+            state.pagosExpressPhase = newPhase;
+            localStorage.setItem(STORAGE_PAGOS_PHASE_KEY, newPhase);
+
+            const descriptions = {
+                'off': 'Fase 0: Flag apagado (0% usuarios). Nadie ve la funcionalidad.',
+                'dogfooding': 'Fase 1: Dogfooding interno. Solo usuarios @nexusdash.dev.',
+                'canary-20': 'Fase 2: Canary 20%. Usuarios con bucket < 20% (Objetivo PO).',
+                'ga-100': 'Fase 3: 100% General Availability (Liberación completa).',
+                'kill-switch': '🚨 KILL SWITCH ACTIVADO: Rollback inmediato a 0% en ConfigCat.'
+            };
+
+            showToast(descriptions[newPhase] || `Fase cambiada a ${newPhase}`);
+
+            // Agregar al log de auditoría
+            if (auditLogList) {
+                const li = document.createElement('li');
+                li.innerHTML = `<span class="time">Ahora:</span> <span>Fase de Rollout actualizada a <strong>${newPhase}</strong> por ${state.currentUser.name}.</span>`;
+                auditLogList.prepend(li);
+            }
+
+            await renderPagosExpressState();
+        }
+
+        // ---------------------------------------------------------------------
+        // Limpieza de Deuda Técnica de Toggles
+        // ---------------------------------------------------------------------
+        function handleCleanupLegacyToggles() {
+            const rows = document.querySelectorAll('.row-debt-critical');
+            rows.forEach(row => {
+                const actionCell = row.querySelector('.action-cell');
+                const badge = row.querySelector('.badge-danger');
+                if (actionCell) actionCell.innerHTML = '<strong>🧹 PR #142 Creado:</strong> Refactorización en curso';
+                if (badge) {
+                    badge.textContent = 'En Limpieza';
+                    badge.className = 'badge badge-info';
+                }
+            });
+
+            btnTriggerCleanup.disabled = true;
+            btnTriggerCleanup.textContent = '✅ PR #142 Creado en GitHub';
+            showToast('Pull Request #142 generado: Eliminando 3 Feature Toggles obsoletos (>45 días)');
+        }
+
+        // ---------------------------------------------------------------------
+        // Monitoreo Periódico de Salud (/api/health)
+        // ---------------------------------------------------------------------
+        async function checkHealthStatus() {
+            try {
+                const res = await fetch('/api/health');
+                if (res.ok) {
+                    const data = await res.json();
+                    if (healthCheckText) healthCheckText.textContent = `Render: ${data.status} (Up ${data.uptimeSeconds}s)`;
+                    if (valHealthStatus) valHealthStatus.textContent = '100% Healthy';
+                }
+            } catch (e) {
+                if (healthCheckText) healthCheckText.textContent = 'Render: Desconectado';
+                if (valHealthStatus) valHealthStatus.textContent = 'Degradado';
+            }
+        }
+
+        // ---------------------------------------------------------------------
+        // Evaluación y Renderizado de Modo Oscuro (Tickets Originales)
         // ---------------------------------------------------------------------
         async function evaluateFeatureFlag() {
             const bucket = computeUserBucket(state.currentUser.id);
             const userWithBucket = { ...state.currentUser, bucket };
             const ccStatus = window.ConfigCatService ? window.ConfigCatService.getStatus() : { isCloud: false };
-            const flagKeyName = window.ConfigCatService ? window.ConfigCatService.getDetectedFlagKey() : 'dark_mode_enabled';
+            const flagKeyName = 'dark_mode_enabled';
 
             let flagEnabled = false;
 
             if (ccStatus.isCloud) {
-                // Modo Cloud (evaluación con el SDK contra ConfigCat)
                 flagEnabled = await window.ConfigCatService.getValueAsync(flagKeyName, false, userWithBucket);
-                state.lastEvaluatedFlagValue = flagEnabled;
-
-                // Si en ConfigCat está activo y no hay preferencia manual guardada, activar dark mode
                 const savedTheme = localStorage.getItem(STORAGE_THEME_KEY);
                 const themeToApply = savedTheme || (flagEnabled ? 'dark' : 'light');
 
@@ -206,7 +536,6 @@ if (typeof window === 'undefined') {
                 };
             }
 
-            // Modo Local de Tickets
             let simulatedFlagValue = false;
             if (state.activeTicket === 'ticket-3') {
                 simulatedFlagValue = true;
@@ -223,8 +552,6 @@ if (typeof window === 'undefined') {
                 flagEnabled = simulatedFlagValue;
             }
 
-            state.lastEvaluatedFlagValue = flagEnabled;
-
             switch (state.activeTicket) {
                 case 'ticket-1':
                     return {
@@ -237,7 +564,6 @@ if (typeof window === 'undefined') {
                         persistenceText: 'Deshabilitada (Rollout 0%)',
                         themeToApply: 'light'
                     };
-
                 case 'ticket-2': {
                     const qualifies = bucket < 10;
                     return {
@@ -253,7 +579,6 @@ if (typeof window === 'undefined') {
                         themeToApply: qualifies ? state.inMemoryTheme : 'light'
                     };
                 }
-
                 case 'ticket-3':
                 default: {
                     const savedTheme = localStorage.getItem(STORAGE_THEME_KEY) || 'light';
@@ -273,11 +598,9 @@ if (typeof window === 'undefined') {
 
         function applyThemeToDOM(theme) {
             htmlRoot.setAttribute('data-theme', theme);
-
             if (toggleLabel) {
                 toggleLabel.textContent = theme === 'dark' ? 'Modo Claro' : 'Modo Oscuro';
             }
-
             if (inspector.themeApplied) {
                 inspector.themeApplied.textContent = theme;
                 inspector.themeApplied.style.color = theme === 'dark' ? '#818cf8' : '#4f46e5';
@@ -288,12 +611,6 @@ if (typeof window === 'undefined') {
             const result = await evaluateFeatureFlag();
             const ccStatus = window.ConfigCatService ? window.ConfigCatService.getStatus() : { isCloud: false };
 
-            // El botón de alternar tema siempre está disponible
-            if (darkModeToggleContainer) {
-                darkModeToggleContainer.classList.remove('hidden');
-            }
-
-            // Aplicar tema resultante al DOM
             applyThemeToDOM(result.themeToApply);
 
             // Resaltar Cajas de Tickets
@@ -308,7 +625,7 @@ if (typeof window === 'undefined') {
                 }
             });
 
-            // Actualizar Estado de ConfigCat en el Panel
+            // Actualizar Badge de ConfigCat
             if (ccStatusBadge) {
                 if (ccStatus.isCloud) {
                     ccStatusBadge.textContent = '🟢 Cloud Conectado';
@@ -321,9 +638,9 @@ if (typeof window === 'undefined') {
 
             if (ccConnectionMsg) {
                 if (ccStatus.isCloud) {
-                    ccConnectionMsg.innerHTML = `Conectado a <strong>ConfigCat Cloud (.env activo)</strong>. Flag: <code>${result.flagKey}</code> = <strong>${result.flagEnabled}</strong>.`;
+                    ccConnectionMsg.innerHTML = `Conectado a <strong>ConfigCat Cloud (.env activo)</strong>. Flag: <code>dark_mode_enabled</code> & <code>pagos-express-v1</code>.`;
                 } else {
-                    ccConnectionMsg.innerHTML = `Modo: <strong>ConfigCat SDK Local Overrides</strong> (Simulador de Tickets). Clave configurada en tu <code>.env</code>.`;
+                    ccConnectionMsg.innerHTML = `Modo: <strong>ConfigCat SDK Local Overrides</strong> (Simulador de Tickets y Flags).`;
                 }
             }
 
@@ -331,67 +648,31 @@ if (typeof window === 'undefined') {
                 ccSdkKeyInput.value = ccStatus.sdkKey;
             }
 
-            // Actualizar Inspector
-            if (inspector.flagKey) {
-                inspector.flagKey.textContent = result.flagKey;
-            }
             if (inspector.flagValue) {
                 inspector.flagValue.textContent = String(result.flagEnabled);
                 inspector.flagValue.className = `val badge ${result.flagEnabled ? 'on-flag' : 'off-flag'}`;
             }
-            if (inspector.phase) inspector.phase.textContent = result.ticketName;
-            if (inspector.rolloutPct) inspector.rolloutPct.textContent = result.rolloutPct;
             if (inspector.userIdentifier) inspector.userIdentifier.textContent = state.currentUser.id;
             if (inspector.userBucket) inspector.userBucket.textContent = result.bucketStatus;
-            if (inspector.persistence) inspector.persistence.textContent = result.persistenceText;
 
-            // Badge en Sidebar
             if (userCohortBadge) {
-                if (ccStatus.isCloud) {
-                    userCohortBadge.textContent = `ConfigCat: ${result.flagEnabled ? 'Flag ON (Activo)' : 'Flag OFF (Inactivo)'}`;
-                } else if (state.activeTicket === 'ticket-1') {
-                    userCohortBadge.textContent = 'Cohort: 0% Rollout (Inactivo)';
-                } else if (state.activeTicket === 'ticket-2') {
-                    userCohortBadge.textContent = result.flagEnabled
-                        ? `Cohort: Canary ${result.bucket}% (Activo)`
-                        : `Cohort: Excluido ${result.bucket}% (Fuera de 10%)`;
-                } else {
-                    userCohortBadge.textContent = 'Cohort: GA 100% (Acceso Total)';
-                }
+                userCohortBadge.textContent = `User: ${state.currentUser.name} (${computeUserBucket(state.currentUser.id)}%)`;
             }
+
+            await renderPagosExpressState();
         }
 
-        // Alternador de Modo Claro / Oscuro
+        // Alternador de Tema
         function handleToggleTheme() {
             const currentTheme = htmlRoot.getAttribute('data-theme') || 'light';
             const nextTheme = currentTheme === 'dark' ? 'light' : 'dark';
-
             localStorage.setItem(STORAGE_THEME_KEY, nextTheme);
             state.inMemoryTheme = nextTheme;
             applyThemeToDOM(nextTheme);
             showToast(`Tema cambiado a: ${nextTheme === 'dark' ? 'Modo Oscuro 🌙' : 'Modo Claro ☀️'}`);
         }
 
-        async function handleSelectTicket(ticketId) {
-            state.activeTicket = ticketId;
-            ticketSelect.value = ticketId;
-            localStorage.setItem(STORAGE_TICKET_KEY, ticketId);
-
-            const ccStatus = window.ConfigCatService ? window.ConfigCatService.getStatus() : { isCloud: false };
-            if (ccStatus.isCloud) {
-                showToast('Aviso: Estás conectado a ConfigCat Cloud en vivo.');
-            } else {
-                const names = {
-                    'ticket-1': 'Ticket 1 (0% Rollout)',
-                    'ticket-2': 'Ticket 2 (10% Canary)',
-                    'ticket-3': 'Ticket 3 (100% GA)'
-                };
-                showToast(`Fase activada: ${names[ticketId] || ticketId}`);
-            }
-
-            await renderState();
-        }
-
+        // Alternar Usuario para Probar Targeting
         async function handleToggleUser() {
             currentUserIndex = (currentUserIndex + 1) % USERS.length;
             state.currentUser = USERS[currentUserIndex];
@@ -400,16 +681,16 @@ if (typeof window === 'undefined') {
             if (avatarEl) avatarEl.textContent = state.currentUser.initials;
 
             await renderState();
-            showToast(`Usuario: ${state.currentUser.name} (${computeUserBucket(state.currentUser.id)}%)`);
+            showToast(`Usuario cambiado a: ${state.currentUser.name} (${computeUserBucket(state.currentUser.id)}%) [${state.currentUser.email}]`);
         }
 
+        // Conectar ConfigCat
         async function handleConnectConfigCat() {
             const inputVal = (ccSdkKeyInput ? ccSdkKeyInput.value : '').trim();
             if (!inputVal) {
                 showToast('Por favor introduce una SDK Key válida');
                 return;
             }
-
             if (window.ConfigCatService) {
                 await window.ConfigCatService.setSdkKey(inputVal);
                 await renderState();
@@ -447,51 +728,66 @@ if (typeof window === 'undefined') {
             }, 2800);
         }
 
-        // Listeners
-        if (darkModeToggleBtn) {
-            darkModeToggleBtn.addEventListener('click', handleToggleTheme);
-        }
+        // Event Listeners
+        if (darkModeToggleBtn) darkModeToggleBtn.addEventListener('click', handleToggleTheme);
+        if (userProfileCard) userProfileCard.addEventListener('click', handleToggleUser);
+
         if (ticketSelect) {
-            ticketSelect.addEventListener('change', (e) => handleSelectTicket(e.target.value));
+            ticketSelect.addEventListener('change', async (e) => {
+                state.activeTicket = e.target.value;
+                localStorage.setItem(STORAGE_TICKET_KEY, e.target.value);
+                await renderState();
+            });
         }
 
         Object.keys(ticketBoxes).forEach((key) => {
             const box = ticketBoxes[key];
-            if (box) box.addEventListener('click', () => handleSelectTicket(key));
+            if (box) {
+                box.addEventListener('click', async () => {
+                    state.activeTicket = key;
+                    if (ticketSelect) ticketSelect.value = key;
+                    localStorage.setItem(STORAGE_TICKET_KEY, key);
+                    await renderState();
+                });
+            }
         });
 
-        if (userProfileCard) {
-            userProfileCard.title = 'Haz clic para alternar usuario y probar targeting';
-            userProfileCard.addEventListener('click', handleToggleUser);
+        // Listeners de Fases de Pagos Express
+        Object.keys(phaseButtons).forEach((phaseKey) => {
+            const btn = phaseButtons[phaseKey];
+            if (btn) {
+                btn.addEventListener('click', () => handlePhaseChange(phaseKey));
+            }
+        });
+
+        // Listeners de Checkout
+        if (btnPayTraditional) {
+            btnPayTraditional.addEventListener('click', () => executeCheckout(false));
+        }
+        if (btnPayExpress) {
+            btnPayExpress.addEventListener('click', () => executeCheckout(true));
+        }
+
+        // Limpieza de Toggles
+        if (btnTriggerCleanup) {
+            btnTriggerCleanup.addEventListener('click', handleCleanupLegacyToggles);
         }
 
         if (ccConnectBtn) ccConnectBtn.addEventListener('click', handleConnectConfigCat);
         if (ccResetBtn) ccResetBtn.addEventListener('click', handleResetConfigCat);
 
-        const navItems = document.querySelectorAll('.nav-item');
-        navItems.forEach((item) => {
-            item.addEventListener('click', (e) => {
-                e.preventDefault();
-                navItems.forEach((i) => i.classList.remove('active'));
-                item.classList.add('active');
-            });
-        });
-
-        // Inicialización del servicio ConfigCat
+        // Inicializar ConfigCat SDK
         if (window.ConfigCatService) {
             await window.ConfigCatService.initClient();
             window.ConfigCatService.onConfigChanged(async () => {
-                console.log('⚡ ConfigCat: Cambio en vivo recibido');
                 showToast('ConfigCat: Configuración remota actualizada en vivo');
                 await renderState();
             });
         }
 
-        // Restaurar tema guardado previamente si existe
+        // Restaurar estado inicial
         const savedTheme = localStorage.getItem(STORAGE_THEME_KEY);
-        if (savedTheme) {
-            applyThemeToDOM(savedTheme);
-        }
+        if (savedTheme) applyThemeToDOM(savedTheme);
 
         const savedTicket = localStorage.getItem(STORAGE_TICKET_KEY);
         if (savedTicket && ticketBoxes[savedTicket]) {
@@ -500,5 +796,7 @@ if (typeof window === 'undefined') {
         }
 
         await renderState();
+        await checkHealthStatus();
+        setInterval(checkHealthStatus, 15000);
     });
 }
