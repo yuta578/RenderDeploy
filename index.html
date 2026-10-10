@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="light">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Analytics Dashboard - Dark Mode Rollout</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+        rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+</head>
+
+<body>
+    <div class="app-layout">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="brand">
+                <div class="brand-logo">📊</div>
+                <span class="brand-name">NexusDash</span>
+            </div>
+
+            <nav class="nav-menu">
+                <a href="#overview" class="nav-item active">
+                    <span class="nav-icon">📈</span>
+                    <span>Resumen</span>
+                </a>
+                <a href="#metrics" class="nav-item">
+                    <span class="nav-icon">⚡</span>
+                    <span>Métricas</span>
+                </a>
+                <a href="#users" class="nav-item">
+                    <span class="nav-icon">👥</span>
+                    <span>Usuarios</span>
+                </a>
+                <a href="#feature-flags" class="nav-item">
+                    <span class="nav-icon">🚩</span>
+                    <span>Feature Flags</span>
+                </a>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="user-profile">
+                    <div class="avatar">AD</div>
+                    <div class="user-info">
+                        <span class="user-name">Admin Dev</span>
+                        <span class="user-role" id="user-cohort-badge">Cohort: Evaluando...</span>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Topbar Header -->
+            <header class="topbar">
+                <div class="search-bar">
+                    <span class="search-icon">🔍</span>
+                    <input type="text" placeholder="Buscar reportes, usuarios o métricas..." />
+                </div>
+
+                <div class="topbar-actions">
+                    <!-- Dark Mode Toggle Button (Visible only according to Ticket rollout stage) -->
+                    <div id="dark-mode-toggle-container" class="toggle-container hidden">
+                        <button id="dark-mode-toggle" class="btn-theme-toggle" aria-label="Alternar tema oscuro">
+                            <span class="theme-icon light-icon">☀️</span>
+                            <span class="theme-icon dark-icon">🌙</span>
+                            <span class="toggle-text" id="toggle-label">Modo Oscuro</span>
+                        </button>
+                    </div>
+
+                    <button class="btn-icon" aria-label="Notificaciones">🔔</button>
+                    <button class="btn-icon" aria-label="Configuración">⚙️</button>
+                </div>
+            </header>
+
+            <div class="content-body">
+                <!-- Banner de Explicación de Tickets -->
+                <section class="ticket-status-card">
+                    <div class="ticket-header">
+                        <div>
+                            <span class="badge badge-primary">Estrategia de Rollout</span>
+                            <h2>División de Tickets: Implementación Progresiva de Modo Oscuro</h2>
+                        </div>
+                        <div class="simulation-controls">
+                            <label for="ticket-select"><strong>Simulador de Fase:</strong></label>
+                            <select id="ticket-select" class="ticket-selector">
+                                <option value="ticket-1">Ticket 1: Flag Apagado (0% rollout)</option>
+                                <option value="ticket-2">Ticket 2: Flag 10% Usuarios (Sin persistencia)</option>
+                                <option value="ticket-3" selected>Ticket 3: Flag 100% (Con persistencia localStorage)
+                                </option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="tickets-grid">
+                        <div class="ticket-box" id="ticket-box-1">
+                            <div class="ticket-badge">Ticket 1</div>
+                            <h3>Variables CSS & Tema Raíz</h3>
+                            <p>Variables en <code>:root[data-theme="dark"]</code> y lógica de clases. Flag
+                                <code>dark_mode_enabled: false</code>.</p>
+                            <span class="status-pill off">0% Rollout (Oculto)</span>
+                        </div>
+
+                        <div class="ticket-box" id="ticket-box-2">
+                            <div class="ticket-badge">Ticket 2</div>
+                            <h3>Botón Toggle (Canary 10%)</h3>
+                            <p>Toggle visible únicamente al 10% de los usuarios mediante hashing de ID. Sin
+                                persistencia.</p>
+                            <span class="status-pill canary">10% Canary</span>
+                        </div>
+
+                        <div class="ticket-box" id="ticket-box-3">
+                            <div class="ticket-badge">Ticket 3</div>
+                            <h3>Persistencia & GA (100%)</h3>
+                            <p>Guarda la preferencia en <code>localStorage</code> / backend y eleva la activación al
+                                100% de la base.</p>
+                            <span class="status-pill active">100% GA (Persistente)</span>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- KPI Metrics Grid -->
+                <section class="kpi-grid">
+                    <div class="metric-card">
+                        <div class="metric-icon blue">💰</div>
+                        <div class="metric-details">
+                            <span class="metric-title">Ingresos Totales</span>
+                            <div class="metric-value">$142,850</div>
+                            <span class="metric-change positive">↑ +18.4% vs mes anterior</span>
+                        </div>
+                    </div>
+
+                    <div class="metric-card">
+                        <div class="metric-icon purple">👥</div>
+                        <div class="metric-details">
+                            <span class="metric-title">Usuarios Activos</span>
+                            <div class="metric-value">24,520</div>
+                            <span class="metric-change positive">↑ +12.1% nuevos usuarios</span>
+                        </div>
+                    </div>
+
+                    <div class="metric-card">
+                        <div class="metric-icon emerald">⚡</div>
+                        <div class="metric-details">
+                            <span class="metric-title">Tasa de Conversión</span>
+                            <div class="metric-value">4.62%</div>
+                            <span class="metric-change positive">↑ +0.8% optimización</span>
+                        </div>
+                    </div>
+
+                    <div class="metric-card">
+                        <div class="metric-icon amber">⏱️</div>
+                        <div class="metric-details">
+                            <span class="metric-title">Latencia Media</span>
+                            <div class="metric-value">42ms</div>
+                            <span class="metric-change positive">↓ -6ms en producción</span>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Analytics Details Grid -->
+                <section class="dashboard-grid">
+                    <div class="card chart-card">
+                        <div class="card-header">
+                            <h3>Actividad y Rendimiento en Tiempo Real</h3>
+                            <span class="badge">Live</span>
+                        </div>
+                        <div class="card-body chart-placeholder">
+                            <div class="bar-chart-mock">
+                                <div class="bar" style="--h: 40%"><span>Lun</span></div>
+                                <div class="bar" style="--h: 65%"><span>Mar</span></div>
+                                <div class="bar" style="--h: 50%"><span>Mié</span></div>
+                                <div class="bar" style="--h: 85%"><span>Jue</span></div>
+                                <div class="bar" style="--h: 95%"><span>Vie</span></div>
+                                <div class="bar" style="--h: 70%"><span>Sáb</span></div>
+                                <div class="bar" style="--h: 60%"><span>Dom</span></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card info-card">
+                        <div class="card-header">
+                            <h3>Estado del Feature Flag en Runtime</h3>
+                        </div>
+                        <div class="card-body">
+                            <ul class="flag-inspector-list">
+                                <li>
+                                    <span class="label">Flag Name:</span>
+                                    <code class="val">dark_mode_enabled</code>
+                                </li>
+                                <li>
+                                    <span class="label">Fase Activa:</span>
+                                    <span id="info-current-phase" class="val">Ticket 3</span>
+                                </li>
+                                <li>
+                                    <span class="label">Porcentaje Rollout:</span>
+                                    <span id="info-rollout-pct" class="val">100%</span>
+                                </li>
+                                <li>
+                                    <span class="label">User Cohort Bucket:</span>
+                                    <span id="info-user-bucket" class="val">7% (Califica)</span>
+                                </li>
+                                <li>
+                                    <span class="label">Persistencia Activa:</span>
+                                    <span id="info-persistence-status" class="val">localStorage (Habilitada)</span>
+                                </li>
+                                <li>
+                                    <span class="label">Tema Actual en DOM:</span>
+                                    <span id="info-theme-applied" class="val">light</span>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+
+</html>
