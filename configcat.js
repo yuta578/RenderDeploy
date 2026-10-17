@@ -89,7 +89,8 @@
             // Entorno sin servidor activo o estático
         }
 
-        return '';
+        const DEFAULT_FALLBACK_KEY = 'configcat-sdk-1/5ybfCOsYO0WAlFjL7w6fhw/u_x-W-ddkUCjhyiXv_Q8OA';
+        return DEFAULT_FALLBACK_KEY;
     }
 
     /**
@@ -211,10 +212,12 @@
             if (isCloud && typeof client.getAllKeysAsync === 'function') {
                 const availableKeys = await client.getAllKeysAsync();
                 if (!availableKeys.includes(flagName)) {
-                    if (flagName === 'pagos-express-v1' && availableKeys.includes('nuevaFuncionalidad')) {
-                        targetKey = 'nuevaFuncionalidad';
-                    } else if (flagName === 'dark_mode_enabled' && availableKeys.includes('isMyFirstFeatureEnabled')) {
-                        targetKey = 'isMyFirstFeatureEnabled';
+                    if (flagName === 'pagos-express-v1') {
+                        if (availableKeys.includes('nuevaFuncionalidad')) targetKey = 'nuevaFuncionalidad';
+                        else if (availableKeys.includes('pagos')) targetKey = 'pagos';
+                    } else if (flagName === 'dark_mode_enabled') {
+                        if (availableKeys.includes('isMyFirstFeatureEnabled')) targetKey = 'isMyFirstFeatureEnabled';
+                        else if (availableKeys.includes('dark')) targetKey = 'dark';
                     }
                 }
             }

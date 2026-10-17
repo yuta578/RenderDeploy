@@ -51,7 +51,8 @@ if (typeof window === 'undefined') {
     loadEnvFile();
 
     const PORT = process.env.PORT || 3000;
-    const CONFIGCAT_ENV_KEY = process.env.CONFIGCAT_SDK_KEY || '';
+    const FALLBACK_CONFIGCAT_KEY = 'configcat-sdk-1/5ybfCOsYO0WAlFjL7w6fhw/u_x-W-ddkUCjhyiXv_Q8OA';
+    const CONFIGCAT_ENV_KEY = process.env.CONFIGCAT_SDK_KEY || FALLBACK_CONFIGCAT_KEY;
 
     const MIME_TYPES = {
         '.html': 'text/html; charset=utf-8',
@@ -521,8 +522,16 @@ if (typeof window === 'undefined') {
 
             if (ccStatus.isCloud) {
                 flagEnabled = await window.ConfigCatService.getValueAsync(flagKeyName, false, userWithBucket);
-                const savedTheme = localStorage.getItem(STORAGE_THEME_KEY);
-                const themeToApply = savedTheme || (flagEnabled ? 'dark' : 'light');
+                state.darkModeFlagEnabled = flagEnabled;
+
+                let themeToApply = 'light';
+                if (flagEnabled) {
+                    const savedTheme = localStorage.getItem(STORAGE_THEME_KEY);
+                    themeToApply = savedTheme || 'dark';
+                } else {
+                    themeToApply = 'light';
+                    localStorage.removeItem(STORAGE_THEME_KEY);
+                }
 
                 return {
                     ticketName: 'ConfigCat Cloud (Live)',
@@ -531,7 +540,7 @@ if (typeof window === 'undefined') {
                     flagEnabled,
                     bucket,
                     bucketStatus: `${bucket}% (Evaluado por Reglas Remotas)`,
-                    persistenceText: 'localStorage (Habilitada)',
+                    persistenceText: flagEnabled ? 'localStorage (Habilitada)' : 'Deshabilitada (Flag en OFF)',
                     themeToApply
                 };
             }
@@ -551,6 +560,7 @@ if (typeof window === 'undefined') {
             } else {
                 flagEnabled = simulatedFlagValue;
             }
+            state.darkModeFlagEnabled = flagEnabled;
 
             switch (state.activeTicket) {
                 case 'ticket-1':
@@ -600,6 +610,15 @@ if (typeof window === 'undefined') {
             htmlRoot.setAttribute('data-theme', theme);
             if (toggleLabel) {
                 toggleLabel.textContent = theme === 'dark' ? 'Modo Claro' : 'Modo Oscuro';
+            }
+            if (darkModeToggleBtn) {
+                if (state.darkModeFlagEnabled === false) {
+                    darkModeToggleBtn.style.opacity = '0.5';
+                    darkModeToggleBtn.setAttribute('title', 'Modo Oscuro bloqueado por Feature Flag en ConfigCat');
+                } else {
+                    darkModeToggleBtn.style.opacity = '1';
+                    darkModeToggleBtn.setAttribute('title', 'Alternar modo visual');
+                }
             }
             if (inspector.themeApplied) {
                 inspector.themeApplied.textContent = theme;
@@ -664,6 +683,10 @@ if (typeof window === 'undefined') {
 
         // Alternador de Tema
         function handleToggleTheme() {
+            if (!state.darkModeFlagEnabled) {
+                showToast('🔒 Modo Oscuro deshabilitado por Feature Flag en ConfigCat');
+                return;
+            }
             const currentTheme = htmlRoot.getAttribute('data-theme') || 'light';
             const nextTheme = currentTheme === 'dark' ? 'light' : 'dark';
             localStorage.setItem(STORAGE_THEME_KEY, nextTheme);

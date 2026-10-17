@@ -156,7 +156,7 @@ Se establecieron y probaron dos niveles de rollback:
 
 ### 4.1 Configuración del Proyecto y SDK
 * **Herramienta:** ConfigCat Dashboard (Cloud SaaS).
-* **SDK Key Conectada:** `configcat-sdk-1/5ybfCOsYO0WAlFjL7w6fhw/UxbhW_vJyEC3wgNGogEa1w` (disponible en `.env` y expuesta por `/api/config`).
+* **SDK Key Conectada:** `configcat-sdk-1/5ybfCOsYO0WAlFjL7w6fhw/u_x-W-ddkUCjhyiXv_Q8OA` (disponible en `.env` y expuesta por `/api/config`).
 * **Feature Flags Creados y Operativos:**
   1. `nuevaFuncionalidad`: Feature Flag real creado en ConfigCat para gobernar el módulo de pago optimizado / funcionalidad incremental.
   2. `isMyFirstFeatureEnabled`: Flag de control para el tema visual / Dark Mode.
