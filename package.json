@@ -1,7 +1,7 @@
 {
   "name": "nexusdash-render-deploy",
   "version": "3.0.0",
-  "description": "NexusDash - Continuous Deployment, Feature Flags & Safe Release Engine (Taller 6)",
+  "description": "NexusDash - CI/CD, Automatización de Pruebas y Render Deploy (Taller 5)",
   "main": "app.js",
   "scripts": {
     "start": "node app.js",

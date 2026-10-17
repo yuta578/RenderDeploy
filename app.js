@@ -2,7 +2,7 @@
  * ============================================================================
  * NexusDash - Analytics Dashboard & Safe Release Engine (Versión 3.0)
  * ============================================================================
- * Taller 6: Continuous Deployment, Feature Toggles & Progressive Delivery
+ * Taller 5: CI/CD, Automatización de Pruebas y Render Deploy
  *
  * Arquitectura:
  * 1. Node.js (Servidor / Render):
@@ -217,7 +217,7 @@ if (typeof window === 'undefined') {
             'ticket-3': document.getElementById('ticket-box-3')
         };
 
-        // Elementos de Taller 6: Pagos Express & Rollout
+        // Elementos de Taller 5: Pagos Express & Rollout
         const pagosFlagStatusBadge = document.getElementById('pagos-flag-status-badge');
         const checkoutTogglePill = document.getElementById('checkout-toggle-pill');
         const checkoutSubtitle = document.getElementById('checkout-experience-subtitle');
@@ -284,7 +284,7 @@ if (typeof window === 'undefined') {
                 // En modo Cloud, consulta la clave remota en ConfigCat
                 isFlagActive = await window.ConfigCatService.getValueAsync('pagos-express-v1', false, user);
             } else {
-                // En modo Local Overrides / Simulador de Taller 6:
+                // En modo Local Overrides / Simulador de Taller 5:
                 switch (state.pagosExpressPhase) {
                     case 'off':
                     case 'kill-switch':

@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * Automated Test Suite (CI Validation) — Versión 3.0 (Taller 6)
+ * Automated Test Suite (CI Validation) — Taller 5 (CI/CD & Render Deploy)
  * ============================================================================
  * Ejecuta validaciones automáticas y deterministas para el pipeline de CI/CD:
  * 1. Existencia e integridad de archivos clave (Playbook v3.0, código, Docker).
@@ -48,7 +48,7 @@ function fetchUrl(url, options = {}) {
 }
 
 async function runTests() {
-    console.log('🧪 Iniciando pruebas de Integración Continua (CI) — Taller 6 (CD & TBD)...\n');
+    console.log('🧪 Iniciando pruebas de Integración Continua (CI) — Taller 5 (Render & ConfigCat)...\n');
 
     // 1. Verificación de archivos esenciales
     console.log('📦 1. Verificando estructura del proyecto y artefactos:');
@@ -60,8 +60,7 @@ async function runTests() {
         'Dockerfile',
         'package.json',
         'SCRUM_TBD_PLAYBOOK_v3.0.md',
-        'TALLER_5_EJECUCION_Y_RESULTADOS.md',
-        'TALLER_6_EJECUCION_Y_RESULTADOS.md'
+        'TALLER_5_EJECUCION_Y_RESULTADOS.md'
     ];
     requiredFiles.forEach((file) => {
         const exists = fs.existsSync(path.join(__dirname, file));

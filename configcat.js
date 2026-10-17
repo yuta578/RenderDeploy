@@ -1,11 +1,11 @@
 /**
  * ============================================================================
- * ConfigCat Service Module (configcat.js) — Versión 3.0 (Taller 6)
+ * ConfigCat Service Module (configcat.js) — Taller 5
  * ============================================================================
  * Módulo para la gestión y evaluación de Feature Flags con ConfigCat.
  * - Soporte Multi-Flag:
  *   1. 'dark_mode_enabled': Tema visual del dashboard.
- *   2. 'pagos-express-v1': Módulo crítico de checkout en 1 clic (Caso Taller 6).
+ *   2. 'pagos-express-v1': Módulo crítico de checkout en 1 clic (Feature Toggle Taller 5).
  * - Carga asíncrona del SDK oficial (@configcat/sdk).
  * - Sincronización automática de SDK Key desde .env (/api/config).
  * - Modos de operación:
