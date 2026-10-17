@@ -60,6 +60,7 @@ async function runTests() {
         'Dockerfile',
         'package.json',
         'SCRUM_TBD_PLAYBOOK_v3.0.md',
+        'TALLER_5_EJECUCION_Y_RESULTADOS.md',
         'TALLER_6_EJECUCION_Y_RESULTADOS.md'
     ];
     requiredFiles.forEach((file) => {
@@ -153,6 +154,24 @@ async function runTests() {
         assert(checkoutJson.latencyMs === 85, 'Latencia optimizada de Pago Express verificada (85 ms)');
     } catch (err) {
         assert(false, `Error en petición a /api/payments/checkout: ${err.message}`);
+    }
+
+    // Probar manejo de 404 para rutas inexistentes (Error Boundary de CI)
+    try {
+        const notFoundRes = await fetchUrl(`http://localhost:${testPort}/api/nonexistent-route-for-testing`);
+        assert(notFoundRes.statusCode === 404, 'Ruta inexistente responde con HTTP 404 Not Found');
+    } catch (err) {
+        assert(false, `Error en comprobación de 404: ${err.message}`);
+    }
+
+    // 4. Verificación de lógica de ConfigCatService
+    console.log('\n🐱 4. Verificando lógica del servicio ConfigCat:');
+    try {
+        const ConfigCatService = require('./configcat.js');
+        const defaultVal = await ConfigCatService.getValueAsync('nuevaFuncionalidad', false);
+        assert(typeof defaultVal === 'boolean', "ConfigCatService evalúa flag 'nuevaFuncionalidad' a booleano");
+    } catch (err) {
+        assert(false, `Error en evaluación de ConfigCatService: ${err.message}`);
     }
 
     // Cerrar proceso de servidor

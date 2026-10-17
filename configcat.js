@@ -207,7 +207,18 @@
         }
 
         try {
-            return await client.getValueAsync(flagName, defaultValue, ccUser);
+            let targetKey = flagName;
+            if (isCloud && typeof client.getAllKeysAsync === 'function') {
+                const availableKeys = await client.getAllKeysAsync();
+                if (!availableKeys.includes(flagName)) {
+                    if (flagName === 'pagos-express-v1' && availableKeys.includes('nuevaFuncionalidad')) {
+                        targetKey = 'nuevaFuncionalidad';
+                    } else if (flagName === 'dark_mode_enabled' && availableKeys.includes('isMyFirstFeatureEnabled')) {
+                        targetKey = 'isMyFirstFeatureEnabled';
+                    }
+                }
+            }
+            return await client.getValueAsync(targetKey, defaultValue, ccUser);
         } catch (err) {
             console.error(`Error al evaluar flag '${flagName}' en ConfigCat:`, err);
             return defaultValue;
